@@ -106,4 +106,4 @@ npx eslint app/page.tsx lib/evidence-brief.ts
 
 ## Stop
 
-P3 is **PASS locally**. **G2 is still blocked; production is not updated.** A separate explicit production-redeploy authorization is required, including the additive eighth gzip artifact in its serving proof.
+P3 is **PASS production** as of 2026-08-14 at `https://harm-lens-nyc.vercel.app` (`dpl_4bn2XN5H79aZutaiWadKf6zMmSpH`). Public W11 passed all eight gzip artifacts and the production browser walk passed. **G2 is still blocked.** See `PROD_REDEPLOY_P3_MAP_LITERACY_RESULT.md`.

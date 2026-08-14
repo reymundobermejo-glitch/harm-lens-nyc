@@ -115,5 +115,4 @@ All eight local public data artifacts are unchanged:
 - Ranks, predicates, assignment, freshness, and frozen data: **unchanged**.
 - Production / Vercel: **untouched**. The public site remains on the prior build.
 - Git commit: **not created**.
-- A future production redeploy remains a separate authorization and must extend W11 proof to all eight gzip artifacts.
-
+- Production redeploy completed 2026-08-14 as `dpl_4bn2XN5H79aZutaiWadKf6zMmSpH`. Public W11 passed all eight gzip artifacts and the production map walk passed. See `PROD_REDEPLOY_P3_MAP_LITERACY_RESULT.md`.

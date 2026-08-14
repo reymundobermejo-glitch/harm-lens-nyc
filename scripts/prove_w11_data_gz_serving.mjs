@@ -191,6 +191,8 @@ if (!existsSync(dataDir)) {
 }
 
 const files = readdirSync(dataDir).filter((name) => name.endsWith(".gz")).sort();
+const productionRedeployAuthorized = process.env.W11_PRODUCTION_REDEPLOY_AUTHORIZED === "1";
+const stepEStatus = productionRedeployAuthorized ? "AUTHORIZED PRODUCTION REDEPLOY" : "NOT AUTHORIZED";
 const expectedFiles = Object.keys(EXPECTED_FROZEN).sort();
 if (files.length !== expectedFiles.length || files.some((name, index) => name !== expectedFiles[index])) {
   console.error(`W11 requires exactly ${expectedFiles.length} frozen gzip files: ${expectedFiles.join(", ")}. Found: ${files.join(", ")}`);
@@ -255,7 +257,7 @@ const localDecision = host3011Decision === "PASS" ? "PASS" : "BLOCKED";
 const localPayload = {
   check: "W11 /data/*.gz static serving",
   decision: localDecision,
-  step_e: "NOT AUTHORIZED",
+  step_e: stepEStatus,
   meaning: {
     PASS: "vinext start on 3011 serves nested /data/*.gz byte-identical to dist; 3012 wrapper not required for local production-mode data. Step E is still not authorized.",
     BLOCKED: "vinext start on 3011 does not serve nested /data/*.gz byte-identical to dist. Local 3012 wrapper remains required. Step E is not authorized.",
@@ -311,7 +313,7 @@ if (hostUrlRaw) {
     else if (all(hostVerdicts, "PASS")) hostDecision = "PASS";
     else hostDecision = "FAIL";
     hostMeaning = hostDecision === "PASS"
-      ? `${hostUrlRaw} serves each /data/*.gz byte-identical to dist without Content-Encoding: gzip. Step E is still not authorized.`
+      ? `${hostUrlRaw} serves each /data/*.gz byte-identical to dist without Content-Encoding: gzip.${productionRedeployAuthorized ? " This is the authorized production redeploy proof." : " Step E is still not authorized."}`
       : `${hostUrlRaw} does not serve first-class /data/*.gz byte-identical to dist. 3012 is not a substitute. Step E is not authorized.`;
   }
 }
@@ -323,8 +325,10 @@ const deployBlocker = {
   preview_created: process.env.W11_PREVIEW_DEPLOYED === "1" || previewHost,
   project: previewHost ? "harm-lens-phase3-w11" : null,
   product_production_alias: "https://harm-lens-nyc.vercel.app",
-  product_production_touched: false,
-  production_cutover: "forbidden without explicit user authorization — harm-lens-nyc.vercel.app was not aliased or redeployed",
+  product_production_touched: productionRedeployAuthorized,
+  production_cutover: productionRedeployAuthorized
+    ? "explicitly authorized production redeploy"
+    : "forbidden without explicit user authorization — harm-lens-nyc.vercel.app was not aliased or redeployed",
   reason: previewHost
     ? "Preview project harm-lens-phase3-w11 serves public/data/*.gz with staged headers. Unique deployment URLs may 302 under Vercel Deployment Protection; the project URL was used for proof. This is not a cutover of harm-lens-nyc.vercel.app."
     : "Set W11_HOST_URL to a preview origin. Do not treat 3012 as production. Do not cut over harm-lens-nyc.vercel.app.",
@@ -333,14 +337,14 @@ const deployBlocker = {
 const hostPayload = {
   check: "W11 /data/*.gz real-host serving",
   decision: hostUrlRaw ? (hostDecision === "PASS" ? "PASS" : "BLOCKED") : "BLOCKED",
-  step_e: "NOT AUTHORIZED",
+  step_e: stepEStatus,
   w11_host: hostDecision,
   meaning: hostUrlRaw ? hostMeaning : "No W11_HOST_URL set. Production/preview proof not run. Local 3012 is not a host proof. Step E is not authorized.",
   checked_at_utc: new Date().toISOString(),
   host: {
     url: hostUrlRaw || null,
     role: hostUrlRaw?.includes("harm-lens-nyc.vercel.app")
-      ? "production_observational"
+      ? (productionRedeployAuthorized ? "production_redeploy_proof" : "production_observational")
       : hostUrlRaw?.includes("harm-lens-phase3-w11")
         ? "w11_preview_project"
         : (hostUrlRaw ? "preview_or_custom" : null),
@@ -360,10 +364,12 @@ const hostPayload = {
     must_not: "Do not treat 3012 as production. Do not set Content-Encoding: gzip on these URLs. Do not gunzip frozen payloads. Do not change page.tsx URLs.",
   },
   still_true_after_w11_host_pass: {
-    step_e: "NOT AUTHORIZED",
+    step_e: stepEStatus,
     vinext_start_3011: "still 404s /data/*.gz",
-    product_production: "https://harm-lens-nyc.vercel.app untouched; still older MVP",
-    not_a_cutover: true,
+    product_production: productionRedeployAuthorized
+      ? "https://harm-lens-nyc.vercel.app is the explicitly authorized redeploy target"
+      : "https://harm-lens-nyc.vercel.app untouched; still older MVP",
+    not_a_cutover: !productionRedeployAuthorized,
   },
 };
 
@@ -380,7 +386,7 @@ if (!skipLocal && !dryRun) {
 }
 console.log(`W11 host decision: ${hostDecision}`);
 console.log(`host url: ${hostUrlRaw || "(unset)"}`);
-console.log(`step E: NOT AUTHORIZED`);
+console.log(`step E: ${stepEStatus}`);
 if (hostChecks.length) {
   for (const check of hostChecks) {
     console.log(`  ${check.file}  host=${check.host.verdict}(${check.host.http_status}) encoding=${check.host.content_encoding || "none"}`);
