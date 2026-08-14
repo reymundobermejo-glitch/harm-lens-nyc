@@ -1,0 +1,128 @@
+{
+  "meta": {
+    "note": "Read-only slice copied from frozen HL-PLACE-LABELS-LION26B-v1 / Phase 2 places for Ask Legend G0 unit tests. Not a new place universe.",
+    "sourceLabelsVersion": "HL-PLACE-LABELS-LION26B-v1",
+    "placeCount": 10
+  },
+  "places": [
+    {
+      "id": "intersection_node:15193",
+      "placeType": "intersection_node",
+      "placeId": 15193,
+      "title": "Broadway & Rector St",
+      "streetNames": [
+        "Broadway",
+        "Rector St"
+      ],
+      "street": null,
+      "displayName": "LION node 15193"
+    },
+    {
+      "id": "intersection_node:15092",
+      "placeType": "intersection_node",
+      "placeId": 15092,
+      "title": "Flatbush Ave & Livingston St",
+      "streetNames": [
+        "Flatbush Ave",
+        "Livingston St"
+      ],
+      "street": null,
+      "displayName": "LION node 15092"
+    },
+    {
+      "id": "intersection_node:10001",
+      "placeType": "intersection_node",
+      "placeId": 10001,
+      "title": "Mc Clean Ave & Piave Ave",
+      "streetNames": [
+        "Mc Clean Ave",
+        "Piave Ave"
+      ],
+      "street": null,
+      "displayName": "LION node 10001"
+    },
+    {
+      "id": "intersection_node:10002",
+      "placeType": "intersection_node",
+      "placeId": 10002,
+      "title": "Pershing St & Piave Ave",
+      "streetNames": [
+        "Pershing St",
+        "Piave Ave"
+      ],
+      "street": null,
+      "displayName": "LION node 10002"
+    },
+    {
+      "id": "intersection_node:12481",
+      "placeType": "intersection_node",
+      "placeId": 12481,
+      "title": "Atlantic Ave & Surf Ave",
+      "streetNames": [
+        "Atlantic Ave",
+        "Surf Ave",
+        "W 37 St"
+      ],
+      "street": null,
+      "displayName": "LION node 12481"
+    },
+    {
+      "id": "intersection_node:15138",
+      "placeType": "intersection_node",
+      "placeId": 15138,
+      "title": "Broadway & Stone St",
+      "streetNames": [
+        "Broadway",
+        "Stone St",
+        "Whitehall St"
+      ],
+      "street": null,
+      "displayName": "LION node 15138"
+    },
+    {
+      "id": "intersection_node:104436",
+      "placeType": "intersection_node",
+      "placeId": 104436,
+      "title": "Flatbush Ave & Grand Army Plz",
+      "streetNames": [
+        "Flatbush Ave",
+        "Grand Army Plz"
+      ],
+      "street": null,
+      "displayName": "LION node 104436"
+    },
+    {
+      "id": "midblock_segment:100008",
+      "placeType": "midblock_segment",
+      "placeId": 100008,
+      "title": "208 Street",
+      "streetNames": [
+        "208 Street"
+      ],
+      "street": "208 STREET",
+      "displayName": "Midblock segment 100008 — 208 STREET"
+    },
+    {
+      "id": "midblock_segment:10003",
+      "placeType": "midblock_segment",
+      "placeId": 10003,
+      "title": "Treadwell Avenue",
+      "streetNames": [
+        "Treadwell Avenue"
+      ],
+      "street": "TREADWELL AVENUE",
+      "displayName": "Midblock segment 10003 — TREADWELL AVENUE"
+    },
+    {
+      "id": "intersection_node:20316",
+      "placeType": "intersection_node",
+      "placeId": 20316,
+      "title": "Hudson St",
+      "streetNames": [
+        "Hudson St"
+      ],
+      "street": null,
+      "displayName": "LION node 20316"
+    }
+  ]
+}

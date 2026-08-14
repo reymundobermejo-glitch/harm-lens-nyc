@@ -1,0 +1,578 @@
+{
+  "decision": "PASS",
+  "fixtures": [
+    {
+      "fixtureType": "multi_approach_different_speed",
+      "placeKey": "intersection_node:10010",
+      "expectedCounts": {
+        "documentedStreetChanges": 0,
+        "streetNetworkAndRules": 7,
+        "unknownEvidence": 4,
+        "approaches": 4
+      },
+      "expectedStatements": [
+        "No matching record established under the listed frozen sources and match version."
+      ],
+      "expectedBans": [
+        "untreated",
+        "no action",
+        "no treatment",
+        "vehicles travel",
+        "sign is physically present",
+        "current as of today",
+        "crash-date speed",
+        "intersection speed",
+        "priority",
+        "causes",
+        "safer because"
+      ],
+      "status": "pass"
+    },
+    {
+      "fixtureType": "speed_conflict",
+      "placeKey": "intersection_node:11254",
+      "expectedCounts": {
+        "documentedStreetChanges": 2,
+        "streetNetworkAndRules": 9,
+        "unknownEvidence": 5,
+        "approaches": 4
+      },
+      "expectedStatements": [
+        "A possible source relationship was found but not established under the match version.",
+        "No matching record established under the listed frozen sources and match version.",
+        "The frozen source records conflict for this approach; no single value was established."
+      ],
+      "expectedBans": [
+        "untreated",
+        "no action",
+        "no treatment",
+        "vehicles travel",
+        "sign is physically present",
+        "current as of today",
+        "crash-date speed",
+        "intersection speed",
+        "priority",
+        "causes",
+        "safer because"
+      ],
+      "status": "pass"
+    },
+    {
+      "fixtureType": "bike_current",
+      "placeKey": "intersection_node:10195",
+      "expectedCounts": {
+        "documentedStreetChanges": 0,
+        "streetNetworkAndRules": 14,
+        "unknownEvidence": 3,
+        "approaches": 4
+      },
+      "expectedStatements": [
+        "A possible source relationship was found but not established under the match version.",
+        "No matching record established under the listed frozen sources and match version."
+      ],
+      "expectedBans": [
+        "untreated",
+        "no action",
+        "no treatment",
+        "vehicles travel",
+        "sign is physically present",
+        "current as of today",
+        "crash-date speed",
+        "intersection speed",
+        "priority",
+        "causes",
+        "safer because"
+      ],
+      "status": "pass"
+    },
+    {
+      "fixtureType": "bike_retired",
+      "placeKey": "intersection_node:106904",
+      "expectedCounts": {
+        "documentedStreetChanges": 0,
+        "streetNetworkAndRules": 12,
+        "unknownEvidence": 3,
+        "approaches": 4
+      },
+      "expectedStatements": [
+        "No matching record established under the listed frozen sources and match version."
+      ],
+      "expectedBans": [
+        "untreated",
+        "no action",
+        "no treatment",
+        "vehicles travel",
+        "sign is physically present",
+        "current as of today",
+        "crash-date speed",
+        "intersection speed",
+        "priority",
+        "causes",
+        "safer because"
+      ],
+      "status": "pass"
+    },
+    {
+      "fixtureType": "truck_multi_route",
+      "placeKey": "intersection_node:11715",
+      "expectedCounts": {
+        "documentedStreetChanges": 1,
+        "streetNetworkAndRules": 8,
+        "unknownEvidence": 2,
+        "approaches": 3
+      },
+      "expectedStatements": [
+        "No matching record established under the listed frozen sources and match version."
+      ],
+      "expectedBans": [
+        "untreated",
+        "no action",
+        "no treatment",
+        "vehicles travel",
+        "sign is physically present",
+        "current as of today",
+        "crash-date speed",
+        "intersection speed",
+        "priority",
+        "causes",
+        "safer because"
+      ],
+      "status": "pass"
+    },
+    {
+      "fixtureType": "raised_plus_1f",
+      "placeKey": "intersection_node:10534",
+      "expectedCounts": {
+        "documentedStreetChanges": 4,
+        "streetNetworkAndRules": 10,
+        "unknownEvidence": 2,
+        "approaches": 4
+      },
+      "expectedStatements": [
+        "A possible source relationship was found but not established under the match version."
+      ],
+      "expectedBans": [
+        "untreated",
+        "no action",
+        "no treatment",
+        "vehicles travel",
+        "sign is physically present",
+        "current as of today",
+        "crash-date speed",
+        "intersection speed",
+        "priority",
+        "causes",
+        "safer because"
+      ],
+      "status": "pass"
+    },
+    {
+      "fixtureType": "midblock_rules",
+      "placeKey": "midblock_segment:100008",
+      "expectedCounts": {
+        "documentedStreetChanges": 0,
+        "streetNetworkAndRules": 2,
+        "unknownEvidence": 5,
+        "approaches": 1
+      },
+      "expectedStatements": [
+        "A possible source relationship was found but not established under the match version.",
+        "No matching record established under the listed frozen sources and match version."
+      ],
+      "expectedBans": [
+        "untreated",
+        "no action",
+        "no treatment",
+        "vehicles travel",
+        "sign is physically present",
+        "current as of today",
+        "crash-date speed",
+        "intersection speed",
+        "priority",
+        "causes",
+        "safer because"
+      ],
+      "status": "pass"
+    },
+    {
+      "fixtureType": "fully_unmatched_history_and_wave1",
+      "placeKey": "intersection_node:10611",
+      "expectedCounts": {
+        "documentedStreetChanges": 0,
+        "streetNetworkAndRules": 3,
+        "unknownEvidence": 5,
+        "approaches": 3
+      },
+      "expectedStatements": [
+        "No matching record established under the listed frozen sources and match version."
+      ],
+      "expectedBans": [
+        "untreated",
+        "no action",
+        "no treatment",
+        "vehicles travel",
+        "sign is physically present",
+        "current as of today",
+        "crash-date speed",
+        "intersection speed",
+        "priority",
+        "causes",
+        "safer because"
+      ],
+      "status": "pass"
+    },
+    {
+      "fixtureType": "bike_ambiguous_only",
+      "placeKey": "intersection_node:10047",
+      "expectedCounts": {
+        "documentedStreetChanges": 2,
+        "streetNetworkAndRules": 6,
+        "unknownEvidence": 4,
+        "approaches": 3
+      },
+      "expectedStatements": [
+        "A possible source relationship was found but not established under the match version.",
+        "No matching record established under the listed frozen sources and match version."
+      ],
+      "expectedBans": [
+        "untreated",
+        "no action",
+        "no treatment",
+        "vehicles travel",
+        "sign is physically present",
+        "current as of today",
+        "crash-date speed",
+        "intersection speed",
+        "priority",
+        "causes",
+        "safer because"
+      ],
+      "status": "pass"
+    },
+    {
+      "fixtureType": "speed_unmatched_no_claim",
+      "placeKey": "intersection_node:12440",
+      "expectedCounts": {
+        "documentedStreetChanges": 0,
+        "streetNetworkAndRules": 4,
+        "unknownEvidence": 5,
+        "approaches": 4
+      },
+      "expectedStatements": [
+        "No matching record established under the listed frozen sources and match version."
+      ],
+      "expectedBans": [
+        "untreated",
+        "no action",
+        "no treatment",
+        "vehicles travel",
+        "sign is physically present",
+        "current as of today",
+        "crash-date speed",
+        "intersection speed",
+        "priority",
+        "causes",
+        "safer because"
+      ],
+      "status": "pass"
+    },
+    {
+      "fixtureType": "documented_only",
+      "placeKey": "intersection_node:10003",
+      "expectedCounts": {
+        "documentedStreetChanges": 1,
+        "streetNetworkAndRules": 8,
+        "unknownEvidence": 3,
+        "approaches": 4
+      },
+      "expectedStatements": [
+        "No matching record established under the listed frozen sources and match version."
+      ],
+      "expectedBans": [
+        "untreated",
+        "no action",
+        "no treatment",
+        "vehicles travel",
+        "sign is physically present",
+        "current as of today",
+        "crash-date speed",
+        "intersection speed",
+        "priority",
+        "causes",
+        "safer because"
+      ],
+      "status": "pass"
+    },
+    {
+      "fixtureType": "intersection_many_approaches",
+      "placeKey": "intersection_node:101197",
+      "expectedCounts": {
+        "documentedStreetChanges": 2,
+        "streetNetworkAndRules": 11,
+        "unknownEvidence": 2,
+        "approaches": 5
+      },
+      "expectedStatements": [
+        "No matching record established under the listed frozen sources and match version."
+      ],
+      "expectedBans": [
+        "untreated",
+        "no action",
+        "no treatment",
+        "vehicles travel",
+        "sign is physically present",
+        "current as of today",
+        "crash-date speed",
+        "intersection speed",
+        "priority",
+        "causes",
+        "safer because"
+      ],
+      "status": "pass"
+    },
+    {
+      "fixtureType": "midblock_bike",
+      "placeKey": "midblock_segment:100867",
+      "expectedCounts": {
+        "documentedStreetChanges": 0,
+        "streetNetworkAndRules": 3,
+        "unknownEvidence": 3,
+        "approaches": 1
+      },
+      "expectedStatements": [
+        "No matching record established under the listed frozen sources and match version."
+      ],
+      "expectedBans": [
+        "untreated",
+        "no action",
+        "no treatment",
+        "vehicles travel",
+        "sign is physically present",
+        "current as of today",
+        "crash-date speed",
+        "intersection speed",
+        "priority",
+        "causes",
+        "safer because"
+      ],
+      "status": "pass"
+    },
+    {
+      "fixtureType": "midblock_truck",
+      "placeKey": "midblock_segment:100274",
+      "expectedCounts": {
+        "documentedStreetChanges": 1,
+        "streetNetworkAndRules": 3,
+        "unknownEvidence": 2,
+        "approaches": 1
+      },
+      "expectedStatements": [
+        "No matching record established under the listed frozen sources and match version."
+      ],
+      "expectedBans": [
+        "untreated",
+        "no action",
+        "no treatment",
+        "vehicles travel",
+        "sign is physically present",
+        "current as of today",
+        "crash-date speed",
+        "intersection speed",
+        "priority",
+        "causes",
+        "safer because"
+      ],
+      "status": "pass"
+    },
+    {
+      "fixtureType": "midblock_speed",
+      "placeKey": "midblock_segment:100011",
+      "expectedCounts": {
+        "documentedStreetChanges": 0,
+        "streetNetworkAndRules": 2,
+        "unknownEvidence": 4,
+        "approaches": 1
+      },
+      "expectedStatements": [
+        "No matching record established under the listed frozen sources and match version."
+      ],
+      "expectedBans": [
+        "untreated",
+        "no action",
+        "no treatment",
+        "vehicles travel",
+        "sign is physically present",
+        "current as of today",
+        "crash-date speed",
+        "intersection speed",
+        "priority",
+        "causes",
+        "safer because"
+      ],
+      "status": "pass"
+    },
+    {
+      "fixtureType": "onef_ambiguous",
+      "placeKey": "intersection_node:10374",
+      "expectedCounts": {
+        "documentedStreetChanges": 4,
+        "streetNetworkAndRules": 14,
+        "unknownEvidence": 4,
+        "approaches": 4
+      },
+      "expectedStatements": [
+        "A possible source relationship was found but not established under the match version.",
+        "No matching record established under the listed frozen sources and match version."
+      ],
+      "expectedBans": [
+        "untreated",
+        "no action",
+        "no treatment",
+        "vehicles travel",
+        "sign is physically present",
+        "current as of today",
+        "crash-date speed",
+        "intersection speed",
+        "priority",
+        "causes",
+        "safer because"
+      ],
+      "status": "pass"
+    },
+    {
+      "fixtureType": "raised_duplicate_node",
+      "placeKey": "intersection_node:48661",
+      "expectedCounts": {
+        "documentedStreetChanges": 2,
+        "streetNetworkAndRules": 6,
+        "unknownEvidence": 3,
+        "approaches": 3
+      },
+      "expectedStatements": [
+        "No matching record established under the listed frozen sources and match version."
+      ],
+      "expectedBans": [
+        "untreated",
+        "no action",
+        "no treatment",
+        "vehicles travel",
+        "sign is physically present",
+        "current as of today",
+        "crash-date speed",
+        "intersection speed",
+        "priority",
+        "causes",
+        "safer because"
+      ],
+      "status": "pass"
+    },
+    {
+      "fixtureType": "lion_multi_value",
+      "placeKey": "intersection_node:27617",
+      "expectedCounts": {
+        "documentedStreetChanges": 1,
+        "streetNetworkAndRules": 8,
+        "unknownEvidence": 5,
+        "approaches": 3
+      },
+      "expectedStatements": [
+        "A possible source relationship was found but not established under the match version.",
+        "No matching record established under the listed frozen sources and match version.",
+        "The frozen source records conflict for this approach; no single value was established."
+      ],
+      "expectedBans": [
+        "untreated",
+        "no action",
+        "no treatment",
+        "vehicles travel",
+        "sign is physically present",
+        "current as of today",
+        "crash-date speed",
+        "intersection speed",
+        "priority",
+        "causes",
+        "safer because"
+      ],
+      "status": "pass"
+    },
+    {
+      "fixtureType": "matched_and_ambiguous",
+      "placeKey": "intersection_node:10030",
+      "expectedCounts": {
+        "documentedStreetChanges": 0,
+        "streetNetworkAndRules": 6,
+        "unknownEvidence": 5,
+        "approaches": 4
+      },
+      "expectedStatements": [
+        "A possible source relationship was found but not established under the match version.",
+        "No matching record established under the listed frozen sources and match version."
+      ],
+      "expectedBans": [
+        "untreated",
+        "no action",
+        "no treatment",
+        "vehicles travel",
+        "sign is physically present",
+        "current as of today",
+        "crash-date speed",
+        "intersection speed",
+        "priority",
+        "causes",
+        "safer because"
+      ],
+      "status": "pass"
+    },
+    {
+      "fixtureType": "speed_possible",
+      "placeKey": "intersection_node:104436",
+      "expectedCounts": {
+        "documentedStreetChanges": 2,
+        "streetNetworkAndRules": 4,
+        "unknownEvidence": 7,
+        "approaches": 3
+      },
+      "expectedStatements": [
+        "A possible source relationship was found but not established under the match version.",
+        "No matching record established under the listed frozen sources and match version."
+      ],
+      "expectedBans": [
+        "untreated",
+        "no action",
+        "no treatment",
+        "vehicles travel",
+        "sign is physically present",
+        "current as of today",
+        "crash-date speed",
+        "intersection speed",
+        "priority",
+        "causes",
+        "safer because"
+      ],
+      "status": "pass"
+    },
+    {
+      "fixtureType": "speed_zero_global_quarantine",
+      "placeKey": null,
+      "expectedCounts": {
+        "quarantinedSourceRows": 5753,
+        "claimReadyRowsFromQuarantine": 0
+      },
+      "expectedStatements": [],
+      "expectedBans": [
+        "untreated",
+        "no action",
+        "no treatment",
+        "vehicles travel",
+        "sign is physically present",
+        "current as of today",
+        "crash-date speed",
+        "intersection speed",
+        "priority",
+        "causes",
+        "safer because"
+      ],
+      "status": "pass"
+    }
+  ]
+}

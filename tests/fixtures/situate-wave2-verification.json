@@ -1,0 +1,152 @@
+{
+  "checks": [
+    {
+      "evidence": {
+        "base": 40549,
+        "extra": 0,
+        "missing": 0,
+        "projection": 40549
+      },
+      "id": "V1_key_equality",
+      "pass": true
+    },
+    {
+      "evidence": {
+        "actual": {
+          "base": "b86e702c5c9de6bc7e14e08f876c77220e27d6d6b7d6c95dfff8c88f0a4f3ba9",
+          "h1": "81478823ea32f79da73523b24fb33d5c843079daff8064caca031b0353a23e7b",
+          "h2": "32970ea9d30bd32805027226d895e9f78bcc03cfc50ae79ab7be080cb15c4f64",
+          "onef": "4d9d51ff8d5ba8011ade86bd37c262c0bca5a7cb0dcf28f2d93c75af49416d8f"
+        },
+        "expected": {
+          "base": "b86e702c5c9de6bc7e14e08f876c77220e27d6d6b7d6c95dfff8c88f0a4f3ba9",
+          "h1": "81478823ea32f79da73523b24fb33d5c843079daff8064caca031b0353a23e7b",
+          "h2": "32970ea9d30bd32805027226d895e9f78bcc03cfc50ae79ab7be080cb15c4f64",
+          "onef": "4d9d51ff8d5ba8011ade86bd37c262c0bca5a7cb0dcf28f2d93c75af49416d8f"
+        }
+      },
+      "id": "V2_input_hashes",
+      "pass": true
+    },
+    {
+      "evidence": {
+        "bad_places": 0
+      },
+      "id": "V3_base_projection_reference",
+      "pass": true
+    },
+    {
+      "evidence": {
+        "actual": {
+          "bus_lanes": 4411,
+          "enhanced_crossings": 105,
+          "parking_regulation_signs": 333765
+        },
+        "expected": {
+          "bus_lanes": 4411,
+          "enhanced_crossings": 105,
+          "parking_regulation_signs": 333765
+        }
+      },
+      "id": "V4_established_link_conservation",
+      "pass": true
+    },
+    {
+      "evidence": {
+        "bad_midblocks": 0,
+        "bad_refs": 0,
+        "collapsed_fields": 0
+      },
+      "id": "V5_approach_references",
+      "pass": true
+    },
+    {
+      "evidence": {
+        "ambiguous_rows": {
+          "bus_lanes": 52,
+          "enhanced_crossings": 22
+        },
+        "established_wrong": 0,
+        "unknown_wrong": 0
+      },
+      "id": "V6_claim_class_gate",
+      "pass": true
+    },
+    {
+      "evidence": {
+        "ineligible": 36728,
+        "leaked": 0
+      },
+      "id": "V7_parking_ineligible_gate",
+      "pass": true
+    },
+    {
+      "evidence": {
+        "evidence_rows": 16,
+        "invented": 0,
+        "source_rows": 10
+      },
+      "id": "V8_bus_schedule_null_gate",
+      "pass": true
+    },
+    {
+      "evidence": {
+        "bad": 0,
+        "undated_rows": 2
+      },
+      "id": "V9_enhanced_undated_gate",
+      "pass": true
+    },
+    {
+      "evidence": {
+        "hits": 0,
+        "scanned": 338355
+      },
+      "id": "V10_forbidden_phrase_scan",
+      "pass": true
+    },
+    {
+      "evidence": {
+        "bad_status_rows": 0
+      },
+      "id": "V11_exact_no_match_wording",
+      "pass": true
+    },
+    {
+      "evidence": {
+        "fixtures": 16
+      },
+      "id": "V12_claim_fixtures",
+      "pass": true
+    },
+    {
+      "evidence": {
+        "bytes": 35931936,
+        "limit": 41943040
+      },
+      "id": "V13_size_gate",
+      "pass": true
+    },
+    {
+      "evidence": {
+        "artifact": "phase-3/app/public/data/situate-approach-context-wave2-v1.json.gz",
+        "buildReceiptUtc": "2026-08-11T18:20:43.272431+00:00",
+        "gzipMtime": 0,
+        "pass": true,
+        "primaryBytes": 35931936,
+        "primarySha256": "5dc43770ffb74d5d676bda73e0a0c754fe92f2146ffc1c92fdedccad762e4ddf",
+        "rerunBytes": 35931936,
+        "rerunSha256": "5dc43770ffb74d5d676bda73e0a0c754fe92f2146ffc1c92fdedccad762e4ddf"
+      },
+      "id": "V14_deterministic_rerun",
+      "pass": true
+    }
+  ],
+  "decision": "PASS",
+  "output": {
+    "bytes": 35931936,
+    "path": "phase-3/app/public/data/situate-approach-context-wave2-v1.json.gz",
+    "sha256": "5dc43770ffb74d5d676bda73e0a0c754fe92f2146ffc1c92fdedccad762e4ddf"
+  },
+  "projectionVersion": "HL-APPROACH-SITUATE-WAVE2-v1"
+}

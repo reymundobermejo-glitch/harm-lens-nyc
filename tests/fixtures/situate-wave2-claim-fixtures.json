@@ -1,0 +1,647 @@
+{
+  "allPass": true,
+  "fixtureCount": 16,
+  "fixtures": [
+    {
+      "baseSituate": {
+        "approachCount": 3,
+        "documentedStreetChangeCount": 2,
+        "oneFStatus": "documented",
+        "placeKey": "intersection_node:102510",
+        "projectionVersion": "HL-APPROACH-SITUATE-v1",
+        "streetNetworkAndRuleCount": 8,
+        "unknownEvidenceCount": 2
+      },
+      "expected": "scenario predicate true and claim-safe grouping preserved",
+      "familyStatus": {
+        "bus_lanes": {
+          "noMatchStatement": null,
+          "possibleStatement": null,
+          "status": "established"
+        },
+        "enhanced_crossings": {
+          "noMatchStatement": "No matching record established under the listed frozen sources and match version.",
+          "possibleStatement": null,
+          "status": "unmatched"
+        },
+        "parking_regulation_signs": {
+          "noMatchStatement": null,
+          "possibleStatement": null,
+          "status": "established"
+        }
+      },
+      "observed": "pass",
+      "placeId": 102510,
+      "placeKey": "intersection_node:102510",
+      "placeType": "intersection_node",
+      "scenario": "bus_multi_rule",
+      "wave2Counts": {
+        "approaches": 3,
+        "documentedStreetChanges": 0,
+        "streetNetworkAndRules": 12,
+        "unknownEvidence": 0
+      }
+    },
+    {
+      "baseSituate": {
+        "approachCount": 3,
+        "documentedStreetChangeCount": 1,
+        "oneFStatus": "documented",
+        "placeKey": "intersection_node:16468",
+        "projectionVersion": "HL-APPROACH-SITUATE-v1",
+        "streetNetworkAndRuleCount": 8,
+        "unknownEvidenceCount": 2
+      },
+      "expected": "scenario predicate true and claim-safe grouping preserved",
+      "familyStatus": {
+        "bus_lanes": {
+          "noMatchStatement": null,
+          "possibleStatement": null,
+          "status": "established"
+        },
+        "enhanced_crossings": {
+          "noMatchStatement": "No matching record established under the listed frozen sources and match version.",
+          "possibleStatement": null,
+          "status": "unmatched"
+        },
+        "parking_regulation_signs": {
+          "noMatchStatement": null,
+          "possibleStatement": null,
+          "status": "established"
+        }
+      },
+      "observed": "pass",
+      "placeId": 16468,
+      "placeKey": "intersection_node:16468",
+      "placeType": "intersection_node",
+      "scenario": "bus_schedule_unknown",
+      "wave2Counts": {
+        "approaches": 2,
+        "documentedStreetChanges": 0,
+        "streetNetworkAndRules": 20,
+        "unknownEvidence": 0
+      }
+    },
+    {
+      "baseSituate": {
+        "approachCount": 4,
+        "documentedStreetChangeCount": 1,
+        "oneFStatus": "documented",
+        "placeKey": "intersection_node:104461",
+        "projectionVersion": "HL-APPROACH-SITUATE-v1",
+        "streetNetworkAndRuleCount": 8,
+        "unknownEvidenceCount": 4
+      },
+      "expected": "scenario predicate true and claim-safe grouping preserved",
+      "familyStatus": {
+        "bus_lanes": {
+          "noMatchStatement": null,
+          "possibleStatement": "A possible source relationship was found but not established under the match version.",
+          "status": "ambiguous"
+        },
+        "enhanced_crossings": {
+          "noMatchStatement": "No matching record established under the listed frozen sources and match version.",
+          "possibleStatement": null,
+          "status": "unmatched"
+        },
+        "parking_regulation_signs": {
+          "noMatchStatement": "No matching record established under the listed frozen sources and match version.",
+          "possibleStatement": null,
+          "status": "unmatched"
+        }
+      },
+      "observed": "pass",
+      "placeId": 104461,
+      "placeKey": "intersection_node:104461",
+      "placeType": "intersection_node",
+      "scenario": "bus_ambiguous",
+      "wave2Counts": {
+        "approaches": 2,
+        "documentedStreetChanges": 0,
+        "streetNetworkAndRules": 0,
+        "unknownEvidence": 2
+      }
+    },
+    {
+      "baseSituate": {
+        "approachCount": 1,
+        "documentedStreetChangeCount": 1,
+        "oneFStatus": "documented",
+        "placeKey": "midblock_segment:100274",
+        "projectionVersion": "HL-APPROACH-SITUATE-v1",
+        "streetNetworkAndRuleCount": 3,
+        "unknownEvidenceCount": 2
+      },
+      "expected": "scenario predicate true and claim-safe grouping preserved",
+      "familyStatus": {
+        "bus_lanes": {
+          "noMatchStatement": null,
+          "possibleStatement": null,
+          "status": "established"
+        },
+        "enhanced_crossings": {
+          "noMatchStatement": "No matching record established under the listed frozen sources and match version.",
+          "possibleStatement": null,
+          "status": "unmatched"
+        },
+        "parking_regulation_signs": {
+          "noMatchStatement": null,
+          "possibleStatement": null,
+          "status": "established"
+        }
+      },
+      "observed": "pass",
+      "placeId": 100274,
+      "placeKey": "midblock_segment:100274",
+      "placeType": "midblock_segment",
+      "scenario": "bus_midblock",
+      "wave2Counts": {
+        "approaches": 1,
+        "documentedStreetChanges": 0,
+        "streetNetworkAndRules": 7,
+        "unknownEvidence": 0
+      }
+    },
+    {
+      "baseSituate": {
+        "approachCount": 3,
+        "documentedStreetChangeCount": 0,
+        "oneFStatus": "unmatched",
+        "placeKey": "intersection_node:10001",
+        "projectionVersion": "HL-APPROACH-SITUATE-v1",
+        "streetNetworkAndRuleCount": 6,
+        "unknownEvidenceCount": 4
+      },
+      "expected": "scenario predicate true and claim-safe grouping preserved",
+      "familyStatus": {
+        "bus_lanes": {
+          "noMatchStatement": "No matching record established under the listed frozen sources and match version.",
+          "possibleStatement": null,
+          "status": "unmatched"
+        },
+        "enhanced_crossings": {
+          "noMatchStatement": "No matching record established under the listed frozen sources and match version.",
+          "possibleStatement": null,
+          "status": "unmatched"
+        },
+        "parking_regulation_signs": {
+          "noMatchStatement": null,
+          "possibleStatement": null,
+          "status": "established"
+        }
+      },
+      "observed": "pass",
+      "placeId": 10001,
+      "placeKey": "intersection_node:10001",
+      "placeType": "intersection_node",
+      "scenario": "parking_multiplicity",
+      "wave2Counts": {
+        "approaches": 1,
+        "documentedStreetChanges": 0,
+        "streetNetworkAndRules": 4,
+        "unknownEvidence": 0
+      }
+    },
+    {
+      "baseSituate": {
+        "approachCount": 3,
+        "documentedStreetChangeCount": 0,
+        "oneFStatus": "unmatched",
+        "placeKey": "intersection_node:10001",
+        "projectionVersion": "HL-APPROACH-SITUATE-v1",
+        "streetNetworkAndRuleCount": 6,
+        "unknownEvidenceCount": 4
+      },
+      "expected": "scenario predicate true and claim-safe grouping preserved",
+      "familyStatus": {
+        "bus_lanes": {
+          "noMatchStatement": "No matching record established under the listed frozen sources and match version.",
+          "possibleStatement": null,
+          "status": "unmatched"
+        },
+        "enhanced_crossings": {
+          "noMatchStatement": "No matching record established under the listed frozen sources and match version.",
+          "possibleStatement": null,
+          "status": "unmatched"
+        },
+        "parking_regulation_signs": {
+          "noMatchStatement": null,
+          "possibleStatement": null,
+          "status": "established"
+        }
+      },
+      "observed": "pass",
+      "placeId": 10001,
+      "placeKey": "intersection_node:10001",
+      "placeType": "intersection_node",
+      "scenario": "parking_intersection",
+      "wave2Counts": {
+        "approaches": 1,
+        "documentedStreetChanges": 0,
+        "streetNetworkAndRules": 4,
+        "unknownEvidence": 0
+      }
+    },
+    {
+      "baseSituate": {
+        "approachCount": 1,
+        "documentedStreetChangeCount": 0,
+        "oneFStatus": "unmatched",
+        "placeKey": "midblock_segment:100124",
+        "projectionVersion": "HL-APPROACH-SITUATE-v1",
+        "streetNetworkAndRuleCount": 2,
+        "unknownEvidenceCount": 4
+      },
+      "expected": "scenario predicate true and claim-safe grouping preserved",
+      "familyStatus": {
+        "bus_lanes": {
+          "noMatchStatement": "No matching record established under the listed frozen sources and match version.",
+          "possibleStatement": null,
+          "status": "unmatched"
+        },
+        "enhanced_crossings": {
+          "noMatchStatement": "No matching record established under the listed frozen sources and match version.",
+          "possibleStatement": null,
+          "status": "unmatched"
+        },
+        "parking_regulation_signs": {
+          "noMatchStatement": null,
+          "possibleStatement": null,
+          "status": "established"
+        }
+      },
+      "observed": "pass",
+      "placeId": 100124,
+      "placeKey": "midblock_segment:100124",
+      "placeType": "midblock_segment",
+      "scenario": "parking_midblock",
+      "wave2Counts": {
+        "approaches": 1,
+        "documentedStreetChanges": 0,
+        "streetNetworkAndRules": 2,
+        "unknownEvidence": 0
+      }
+    },
+    {
+      "baseSituate": {
+        "approachCount": 3,
+        "documentedStreetChangeCount": 1,
+        "oneFStatus": "documented",
+        "placeKey": "intersection_node:10054",
+        "projectionVersion": "HL-APPROACH-SITUATE-v1",
+        "streetNetworkAndRuleCount": 6,
+        "unknownEvidenceCount": 3
+      },
+      "expected": "scenario predicate true and claim-safe grouping preserved",
+      "familyStatus": {
+        "bus_lanes": {
+          "noMatchStatement": "No matching record established under the listed frozen sources and match version.",
+          "possibleStatement": null,
+          "status": "unmatched"
+        },
+        "enhanced_crossings": {
+          "noMatchStatement": null,
+          "possibleStatement": null,
+          "status": "established"
+        },
+        "parking_regulation_signs": {
+          "noMatchStatement": null,
+          "possibleStatement": null,
+          "status": "established"
+        }
+      },
+      "observed": "pass",
+      "placeId": 10054,
+      "placeKey": "intersection_node:10054",
+      "placeType": "intersection_node",
+      "scenario": "enhanced_dated_node",
+      "wave2Counts": {
+        "approaches": 2,
+        "documentedStreetChanges": 1,
+        "streetNetworkAndRules": 8,
+        "unknownEvidence": 0
+      }
+    },
+    {
+      "baseSituate": {
+        "approachCount": 1,
+        "documentedStreetChangeCount": 1,
+        "oneFStatus": "documented_and_ambiguous",
+        "placeKey": "midblock_segment:121069",
+        "projectionVersion": "HL-APPROACH-SITUATE-v1",
+        "streetNetworkAndRuleCount": 2,
+        "unknownEvidenceCount": 4
+      },
+      "expected": "scenario predicate true and claim-safe grouping preserved",
+      "familyStatus": {
+        "bus_lanes": {
+          "noMatchStatement": "No matching record established under the listed frozen sources and match version.",
+          "possibleStatement": null,
+          "status": "unmatched"
+        },
+        "enhanced_crossings": {
+          "noMatchStatement": null,
+          "possibleStatement": null,
+          "status": "established"
+        },
+        "parking_regulation_signs": {
+          "noMatchStatement": null,
+          "possibleStatement": null,
+          "status": "established"
+        }
+      },
+      "observed": "pass",
+      "placeId": 121069,
+      "placeKey": "midblock_segment:121069",
+      "placeType": "midblock_segment",
+      "scenario": "enhanced_dated_midblock",
+      "wave2Counts": {
+        "approaches": 1,
+        "documentedStreetChanges": 1,
+        "streetNetworkAndRules": 9,
+        "unknownEvidence": 0
+      }
+    },
+    {
+      "baseSituate": {
+        "approachCount": 3,
+        "documentedStreetChangeCount": 0,
+        "oneFStatus": "unmatched",
+        "placeKey": "intersection_node:23514",
+        "projectionVersion": "HL-APPROACH-SITUATE-v1",
+        "streetNetworkAndRuleCount": 6,
+        "unknownEvidenceCount": 4
+      },
+      "expected": "scenario predicate true and claim-safe grouping preserved",
+      "familyStatus": {
+        "bus_lanes": {
+          "noMatchStatement": "No matching record established under the listed frozen sources and match version.",
+          "possibleStatement": null,
+          "status": "unmatched"
+        },
+        "enhanced_crossings": {
+          "noMatchStatement": null,
+          "possibleStatement": null,
+          "status": "established"
+        },
+        "parking_regulation_signs": {
+          "noMatchStatement": null,
+          "possibleStatement": null,
+          "status": "established"
+        }
+      },
+      "observed": "pass",
+      "placeId": 23514,
+      "placeKey": "intersection_node:23514",
+      "placeType": "intersection_node",
+      "scenario": "enhanced_undated",
+      "wave2Counts": {
+        "approaches": 3,
+        "documentedStreetChanges": 1,
+        "streetNetworkAndRules": 4,
+        "unknownEvidence": 0
+      }
+    },
+    {
+      "baseSituate": {
+        "approachCount": 3,
+        "documentedStreetChangeCount": 2,
+        "oneFStatus": "documented",
+        "placeKey": "intersection_node:11255",
+        "projectionVersion": "HL-APPROACH-SITUATE-v1",
+        "streetNetworkAndRuleCount": 12,
+        "unknownEvidenceCount": 1
+      },
+      "expected": "scenario predicate true and claim-safe grouping preserved",
+      "familyStatus": {
+        "bus_lanes": {
+          "noMatchStatement": "No matching record established under the listed frozen sources and match version.",
+          "possibleStatement": null,
+          "status": "unmatched"
+        },
+        "enhanced_crossings": {
+          "noMatchStatement": null,
+          "possibleStatement": "A possible source relationship was found but not established under the match version.",
+          "status": "established_and_ambiguous"
+        },
+        "parking_regulation_signs": {
+          "noMatchStatement": null,
+          "possibleStatement": null,
+          "status": "established"
+        }
+      },
+      "observed": "pass",
+      "placeId": 11255,
+      "placeKey": "intersection_node:11255",
+      "placeType": "intersection_node",
+      "scenario": "enhanced_ambiguous",
+      "wave2Counts": {
+        "approaches": 2,
+        "documentedStreetChanges": 1,
+        "streetNetworkAndRules": 1,
+        "unknownEvidence": 1
+      }
+    },
+    {
+      "baseSituate": {
+        "approachCount": 3,
+        "documentedStreetChangeCount": 0,
+        "oneFStatus": "unmatched",
+        "placeKey": "intersection_node:10002",
+        "projectionVersion": "HL-APPROACH-SITUATE-v1",
+        "streetNetworkAndRuleCount": 6,
+        "unknownEvidenceCount": 4
+      },
+      "expected": "scenario predicate true and claim-safe grouping preserved",
+      "familyStatus": {
+        "bus_lanes": {
+          "noMatchStatement": "No matching record established under the listed frozen sources and match version.",
+          "possibleStatement": null,
+          "status": "unmatched"
+        },
+        "enhanced_crossings": {
+          "noMatchStatement": "No matching record established under the listed frozen sources and match version.",
+          "possibleStatement": null,
+          "status": "unmatched"
+        },
+        "parking_regulation_signs": {
+          "noMatchStatement": "No matching record established under the listed frozen sources and match version.",
+          "possibleStatement": null,
+          "status": "unmatched"
+        }
+      },
+      "observed": "pass",
+      "placeId": 10002,
+      "placeKey": "intersection_node:10002",
+      "placeType": "intersection_node",
+      "scenario": "fully_unmatched",
+      "wave2Counts": {
+        "approaches": 0,
+        "documentedStreetChanges": 0,
+        "streetNetworkAndRules": 0,
+        "unknownEvidence": 0
+      }
+    },
+    {
+      "baseSituate": {
+        "approachCount": 4,
+        "documentedStreetChangeCount": 1,
+        "oneFStatus": "documented",
+        "placeKey": "intersection_node:10003",
+        "projectionVersion": "HL-APPROACH-SITUATE-v1",
+        "streetNetworkAndRuleCount": 8,
+        "unknownEvidenceCount": 3
+      },
+      "expected": "scenario predicate true and claim-safe grouping preserved",
+      "familyStatus": {
+        "bus_lanes": {
+          "noMatchStatement": "No matching record established under the listed frozen sources and match version.",
+          "possibleStatement": null,
+          "status": "unmatched"
+        },
+        "enhanced_crossings": {
+          "noMatchStatement": "No matching record established under the listed frozen sources and match version.",
+          "possibleStatement": null,
+          "status": "unmatched"
+        },
+        "parking_regulation_signs": {
+          "noMatchStatement": null,
+          "possibleStatement": null,
+          "status": "established"
+        }
+      },
+      "observed": "pass",
+      "placeId": 10003,
+      "placeKey": "intersection_node:10003",
+      "placeType": "intersection_node",
+      "scenario": "base_documented_coexistence",
+      "wave2Counts": {
+        "approaches": 2,
+        "documentedStreetChanges": 0,
+        "streetNetworkAndRules": 8,
+        "unknownEvidence": 0
+      }
+    },
+    {
+      "baseSituate": {
+        "approachCount": 3,
+        "documentedStreetChangeCount": 0,
+        "oneFStatus": "unmatched",
+        "placeKey": "intersection_node:10001",
+        "projectionVersion": "HL-APPROACH-SITUATE-v1",
+        "streetNetworkAndRuleCount": 6,
+        "unknownEvidenceCount": 4
+      },
+      "expected": "scenario predicate true and claim-safe grouping preserved",
+      "familyStatus": {
+        "bus_lanes": {
+          "noMatchStatement": "No matching record established under the listed frozen sources and match version.",
+          "possibleStatement": null,
+          "status": "unmatched"
+        },
+        "enhanced_crossings": {
+          "noMatchStatement": "No matching record established under the listed frozen sources and match version.",
+          "possibleStatement": null,
+          "status": "unmatched"
+        },
+        "parking_regulation_signs": {
+          "noMatchStatement": null,
+          "possibleStatement": null,
+          "status": "established"
+        }
+      },
+      "observed": "pass",
+      "placeId": 10001,
+      "placeKey": "intersection_node:10001",
+      "placeType": "intersection_node",
+      "scenario": "base_network_coexistence",
+      "wave2Counts": {
+        "approaches": 1,
+        "documentedStreetChanges": 0,
+        "streetNetworkAndRules": 4,
+        "unknownEvidence": 0
+      }
+    },
+    {
+      "baseSituate": {
+        "approachCount": 3,
+        "documentedStreetChangeCount": 2,
+        "oneFStatus": "documented",
+        "placeKey": "intersection_node:102510",
+        "projectionVersion": "HL-APPROACH-SITUATE-v1",
+        "streetNetworkAndRuleCount": 8,
+        "unknownEvidenceCount": 2
+      },
+      "expected": "scenario predicate true and claim-safe grouping preserved",
+      "familyStatus": {
+        "bus_lanes": {
+          "noMatchStatement": null,
+          "possibleStatement": null,
+          "status": "established"
+        },
+        "enhanced_crossings": {
+          "noMatchStatement": "No matching record established under the listed frozen sources and match version.",
+          "possibleStatement": null,
+          "status": "unmatched"
+        },
+        "parking_regulation_signs": {
+          "noMatchStatement": null,
+          "possibleStatement": null,
+          "status": "established"
+        }
+      },
+      "observed": "pass",
+      "placeId": 102510,
+      "placeKey": "intersection_node:102510",
+      "placeType": "intersection_node",
+      "scenario": "bus_parking_coexistence",
+      "wave2Counts": {
+        "approaches": 3,
+        "documentedStreetChanges": 0,
+        "streetNetworkAndRules": 12,
+        "unknownEvidence": 0
+      }
+    },
+    {
+      "baseSituate": {
+        "approachCount": 3,
+        "documentedStreetChangeCount": 1,
+        "oneFStatus": "documented",
+        "placeKey": "intersection_node:10054",
+        "projectionVersion": "HL-APPROACH-SITUATE-v1",
+        "streetNetworkAndRuleCount": 6,
+        "unknownEvidenceCount": 3
+      },
+      "expected": "scenario predicate true and claim-safe grouping preserved",
+      "familyStatus": {
+        "bus_lanes": {
+          "noMatchStatement": "No matching record established under the listed frozen sources and match version.",
+          "possibleStatement": null,
+          "status": "unmatched"
+        },
+        "enhanced_crossings": {
+          "noMatchStatement": null,
+          "possibleStatement": null,
+          "status": "established"
+        },
+        "parking_regulation_signs": {
+          "noMatchStatement": null,
+          "possibleStatement": null,
+          "status": "established"
+        }
+      },
+      "observed": "pass",
+      "placeId": 10054,
+      "placeKey": "intersection_node:10054",
+      "placeType": "intersection_node",
+      "scenario": "enhanced_parking_coexistence",
+      "wave2Counts": {
+        "approaches": 2,
+        "documentedStreetChanges": 1,
+        "streetNetworkAndRules": 8,
+        "unknownEvidence": 0
+      }
+    }
+  ],
+  "projectionVersion": "HL-APPROACH-SITUATE-WAVE2-v1"
+}

@@ -1,0 +1,143 @@
+{
+  "checks": [
+    {
+      "decision": "PASS",
+      "evidence": {
+        "extra": 0,
+        "missing": 0,
+        "places": 40549
+      },
+      "id": "V1"
+    },
+    {
+      "decision": "PASS",
+      "evidence": {
+        "after": "4d9d51ff8d5ba8011ade86bd37c262c0bca5a7cb0dcf28f2d93c75af49416d8f",
+        "before": "4d9d51ff8d5ba8011ade86bd37c262c0bca5a7cb0dcf28f2d93c75af49416d8f"
+      },
+      "id": "V2"
+    },
+    {
+      "decision": "PASS",
+      "evidence": {
+        "actual": {
+          "ambiguous": 3366,
+          "documented": 13356,
+          "documented_and_ambiguous": 932,
+          "unmatched": 22895
+        },
+        "expected": {
+          "ambiguous": 3366,
+          "documented": 13356,
+          "documented_and_ambiguous": 932,
+          "unmatched": 22895
+        }
+      },
+      "id": "V3"
+    },
+    {
+      "decision": "PASS",
+      "evidence": {
+        "mirrored": 23317,
+        "oneF": 23317
+      },
+      "id": "V4"
+    },
+    {
+      "decision": "PASS",
+      "evidence": {
+        "places": 105,
+        "rows": 106
+      },
+      "id": "V5"
+    },
+    {
+      "decision": "PASS",
+      "evidence": {
+        "establishedSpeedRows": 108694,
+        "leaks": 0
+      },
+      "id": "V6"
+    },
+    {
+      "decision": "PASS",
+      "evidence": {
+        "placesWithPickedConflictWinner": 0
+      },
+      "id": "V7"
+    },
+    {
+      "decision": "PASS",
+      "evidence": {
+        "coercions": 0
+      },
+      "id": "V8"
+    },
+    {
+      "decision": "PASS",
+      "evidence": {
+        "collapsedPlaceFields": 0
+      },
+      "id": "V9"
+    },
+    {
+      "decision": "PASS",
+      "evidence": {
+        "wordingExceptions": 0
+      },
+      "id": "V10"
+    },
+    {
+      "decision": "PASS",
+      "evidence": {
+        "hits": 0
+      },
+      "id": "V11"
+    },
+    {
+      "decision": "PASS",
+      "evidence": {
+        "first": "b86e702c5c9de6bc7e14e08f876c77220e27d6d6b7d6c95dfff8c88f0a4f3ba9",
+        "inputBindings": true,
+        "second": "b86e702c5c9de6bc7e14e08f876c77220e27d6d6b7d6c95dfff8c88f0a4f3ba9"
+      },
+      "id": "V12"
+    },
+    {
+      "decision": "PASS",
+      "evidence": {
+        "exceptions": 0,
+        "multiApproachNodes": 26441
+      },
+      "id": "V13"
+    },
+    {
+      "decision": "PASS",
+      "evidence": {
+        "expected": {
+          "bike_routes": 23065,
+          "lion26b": 110398,
+          "raised_crosswalk": 106,
+          "speed_limits": 108946,
+          "truck_routes": 17651
+        },
+        "projected": {
+          "bike_routes": 23065,
+          "lion26b": 110398,
+          "raised_crosswalk": 106,
+          "speed_limits": 108946,
+          "truck_routes": 17651
+        }
+      },
+      "id": "V14"
+    }
+  ],
+  "decision": "PASS",
+  "fixtures": {
+    "count": 21,
+    "decision": "PASS"
+  },
+  "oneFSha256": "4d9d51ff8d5ba8011ade86bd37c262c0bca5a7cb0dcf28f2d93c75af49416d8f",
+  "projectionBytes": 29334039,
+  "projectionSha256": "b86e702c5c9de6bc7e14e08f876c77220e27d6d6b7d6c95dfff8c88f0a4f3ba9"
+}
