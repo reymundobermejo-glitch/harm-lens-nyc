@@ -166,3 +166,106 @@ export declare function applyChip(
     situateIndex?: SituateFilterIndex | null;
   },
 ): ToolResult & { placeIds?: string[] };
+
+export type LegendSessionBag = {
+  screen: "overview" | "explore" | "inspect" | "compare" | "packet";
+  selectedId: string | null;
+  packetSubjectId: string | null;
+  compareIds: string[];
+  lens: AskLegendLens;
+  roadUser: "everyone" | "pedestrian" | "cyclist" | "motorist";
+  windowKey: "24m" | "36m" | "48m";
+  grain: AskLegendPlaceType;
+  look: string | null;
+  pileIds: string[];
+  query: string;
+  crashYearFocus: string | null;
+  analysisEnd: string | null;
+  sourceStatus: string | null;
+};
+
+export type PlannerJobOk = {
+  ok: true;
+  refused: false;
+  job: string;
+  understood: string;
+  tools: ToolOk[];
+  toolNames: string[];
+  keepCamera?: boolean;
+  deliverable?: string | null;
+  why?: Record<string, unknown> | null;
+  brief?: Record<string, unknown> | null;
+  challenge?: Record<string, unknown> | null;
+  missing?: Record<string, unknown> | null;
+  hours?: Record<string, unknown> | null;
+  walk?: readonly { tab: string; caption: string }[] | null;
+  dataThrough: string | null;
+  sourceStatus?: string | null;
+  honesty: string;
+  trace: string;
+};
+
+export type PlannerJobRefuse = {
+  ok: false;
+  refused: true;
+  job: string;
+  reason: string;
+  prohibition: string | null;
+  understood: null;
+  tools: [];
+  toolNames: [];
+  dataThrough: string | null;
+  honesty: string;
+};
+
+export declare const ASK_LEGEND_TASK_HONESTY: "Governed investigation only — no risk, cause, or treatment.";
+export declare const ASK_LEGEND_TOOLKIT_STAGE: "toolkit";
+export declare const TOOLKIT_TOOLS: readonly string[];
+export declare function readSessionBag(state?: Record<string, unknown>): LegendSessionBag;
+export declare function parsePlannerJob(
+  utterance: string,
+  sessionState?: Record<string, unknown>,
+  ctx?: Record<string, unknown>,
+): { ok: boolean; refused?: boolean; job?: string; understood?: string; calls?: ToolResult[]; reason?: string };
+export declare function runPlannerJob(
+  utterance: string,
+  sessionState?: Record<string, unknown>,
+  ctx?: Record<string, unknown>,
+): PlannerJobOk | PlannerJobRefuse;
+export declare function invokeToolkitTool(
+  tool: string,
+  args: unknown,
+  ctx?: Record<string, unknown>,
+): ToolResult;
+export declare function setRoadUser(raw: unknown): ToolResult;
+export declare function setWindow(raw: unknown): ToolResult;
+export declare function openInspect(raw: unknown): ToolResult;
+export declare function setCrashYear(raw: unknown): ToolResult;
+export declare function openCompare(raw?: unknown, session?: Record<string, unknown>): ToolResult;
+export declare function composeWhyPlace(raw?: unknown, session?: Record<string, unknown>): ToolResult;
+export declare function isSelectedPlacePronoun(value: string): boolean;
+
+export declare const ASK_LEGEND_TOOLKIT_V11: "toolkit-v1.1";
+export declare const WALK_THROUGH_STEPS: readonly { tab: string; caption: string }[];
+export declare const MISSING_EVIDENCE_ITEMS: readonly string[];
+export declare function bucketObservedHours(
+  ids: readonly (number | string)[],
+  records?: Record<string, { crashTime?: string | null }> | null,
+): {
+  claimClass: "source_fact";
+  detector: "time_of_day";
+  buckets: { hour: number; count: number }[];
+  unknown: number;
+  total: number;
+  prohibition: string;
+};
+export declare function parsePlannerJobV1(
+  utterance: string,
+  sessionState?: Record<string, unknown>,
+  ctx?: Record<string, unknown>,
+): { ok: boolean; refused?: boolean; job?: string; understood?: string; calls?: ToolResult[]; reason?: string };
+export declare function parseCloserLookJob(
+  utterance: string,
+  sessionState?: Record<string, unknown>,
+  ctx?: Record<string, unknown>,
+): { ok: boolean; refused?: boolean; job?: string; understood?: string; calls?: ToolResult[]; reason?: string } | null;

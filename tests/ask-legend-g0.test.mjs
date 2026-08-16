@@ -9,6 +9,7 @@ import {
   buildSearchUniverse,
   normalizeQuery,
   searchPlaceIds,
+  searchNearMisses,
   searchPlaces,
 } from "../lib/ask-legend/index.mjs";
 
@@ -32,6 +33,32 @@ test("normalizeQuery collapses cross-street separators and suffixes", () => {
   assert.equal(normalizeQuery("Broadway and Rector St"), "broadway & rector st");
   assert.equal(normalizeQuery("Flatbush Ave @ Livingston"), "flatbush ave & livingston");
   assert.equal(normalizeQuery("Atlantic / Surf"), "atlantic & surf");
+  assert.equal(normalizeQuery("129st 101 ave in queens"), "129 st & 101 ave");
+  assert.equal(normalizeQuery("101ave 129street in Staten Island"), "101 ave & 129 st");
+});
+
+test("I0 gold: NYC dialect resolves the frozen 101 Ave & 129 St node", async () => {
+  const [appBytes, labelBytes] = await Promise.all([
+    readFile(new URL("public/data/app-data.json.gz", appRoot)),
+    readFile(new URL("public/data/place-labels.json.gz", appRoot)),
+  ]);
+  const appData = JSON.parse(gunzipSync(appBytes).toString("utf8"));
+  const labels = JSON.parse(gunzipSync(labelBytes).toString("utf8"));
+  const universe = buildSearchUniverse(appData.places, labels);
+  for (const query of ["101 Ave & 129 St", "129 st & 101 ave", "129st 101 ave in queens"]) {
+    const hits = searchPlaces(query, universe);
+    assert.equal(hits[0]?.id, "intersection_node:34754", query);
+  }
+  const eastern = searchPlaces("eastern pkwy", universe);
+  const easternTitles = eastern.map((hit) => universe.find((place) => place.id === hit.id)?.title ?? "");
+  assert.ok(eastern.some((hit) => hit.id === "intersection_node:26912"));
+  assert.ok(easternTitles.every((title) => /eastern/i.test(title)));
+  assert.ok(!easternTitles.some((title) => /henry hudson|mosholu/i.test(title)));
+  assert.deepEqual(searchPlaces("", universe), []);
+  assert.deepEqual(searchPlaces("unknown invented road & nowhere ave", universe), []);
+  const near = searchNearMisses("101 Drive & 129 St", universe);
+  assert.ok(near.some((hit) => hit.id === "intersection_node:34754"));
+  assert.deepEqual(searchNearMisses("xyzzy quux", universe), []);
 });
 
 test("gold: empty and whitespace fail closed to empty", async () => {

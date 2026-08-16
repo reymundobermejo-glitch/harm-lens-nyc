@@ -12,29 +12,42 @@ import {
   ChevronRight,
   CircleHelp,
   ClipboardList,
+  Copy,
   Database,
   FileText,
   Info,
   Layers3,
+  Link,
   List,
   LockKeyhole,
   MapPinned,
-  RotateCcw,
   Search,
   SlidersHorizontal,
   X,
 } from "lucide-react";
 import {
   ASK_LEGEND_SUBTITLE,
+  ASK_LEGEND_TASK_HONESTY,
   applyChip,
   buildSearchUniverse,
   buildSituateFilterIndexFromYesMap,
   CLAIM_SAFE_SITUATE_FAMILIES,
   listChips,
   placeHasDocumentedYes,
+  runPlannerJob,
+  searchNearMisses,
   searchPlaces,
 } from "../lib/ask-legend/index.mjs";
-import { composeEvidenceBrief, evidenceBriefHtml } from "../lib/evidence-brief";
+import { composeEvidenceBrief, evidenceBriefHtml, resolvePacketSubject } from "../lib/evidence-brief";
+import {
+  SHARE_SET_COPY,
+  SHARE_STORAGE_KEY,
+  buildSharePayload,
+  parseAndValidateShareHref,
+  shareHref,
+  stripShareFromHref,
+  validateSharePayload,
+} from "../lib/share-set.mjs";
 
 type PlaceMode = "intersection_node" | "midblock_segment";
 type Lens = "injury" | "fatal";
@@ -66,6 +79,23 @@ type P25Corridor = {
   uniqueSegmentIdCount: number;
   placeIds: string[];
   metrics: Record<Lens, { count: number; ids: number[] }>;
+  conservation36?: {
+    naiveLinkRows: number;
+    uniqueCollisionIds: number;
+    duplicateNaiveLinksRemoved: number;
+    ids: number[];
+  };
+  officialDotCorridorLayer?: boolean;
+  segmentIds?: string[];
+};
+type CorridorOverlay = {
+  meta: {
+    overlayVersion: "HL-CORRIDOR-LION26B-v0-EASTERN-PKWY-OVERLAY-v1";
+    corridorVersion: string;
+    p25ProjectionSha256: string;
+    officialDotCorridorLayer: boolean;
+  };
+  corridors: Record<string, P25Corridor>;
 };
 type P25Projection = {
   meta: {
@@ -85,6 +115,43 @@ type P25Projection = {
   };
   places: Record<string, P25Place>;
   corridors: Record<string, P25Corridor>;
+};
+
+type CrashWhenRecord = { crashDate: string | null; crashTime: string | null };
+type CrashWhenIndex = {
+  meta: {
+    projectionVersion: "HL-CRASH-WHEN-v1";
+    sourceSnapshot: string;
+    sourceSnapshotSha256: string;
+    p25Projection: string;
+    p25ProjectionSha256: string;
+    supportingIdCount: number;
+    matchedIdCount: number;
+    missingIdCount: number;
+    duplicateSourceIdCount: number;
+    dateMeaning: string;
+    timeMeaning: string;
+  };
+  records: Record<string, CrashWhenRecord>;
+};
+type CrashWhoRecord = {
+  pedestrian: boolean;
+  cyclist: boolean;
+  motorist: boolean;
+  uncategorized: boolean;
+  personsInjured: number | null;
+  personsKilled: number | null;
+};
+type CrashWhoIndex = {
+  meta: {
+    projectionVersion: "HL-CRASH-ROW-WHO-v1";
+    sourceSnapshotSha256: string;
+    p25ProjectionSha256: string;
+    supportingIdCount: number;
+    matchedIdCount: number;
+    missingIdCount: number;
+  };
+  records: Record<string, CrashWhoRecord>;
 };
 
 type CompareMethodLock = { roadUser: RoadUser; window: WindowKey };
@@ -411,6 +478,81 @@ const WINDOW_MAP_LABELS: Record<WindowKey, string> = {
 };
 
 const WINDOW_LABELS: Record<WindowKey, string> = { "24m": "24-month", "36m": "36-month", "48m": "48-month" };
+const CRASH_WHO_FLAG_LABELS = [
+  ["pedestrian", "Walking"],
+  ["cyclist", "Biking"],
+  ["motorist", "Driving"],
+] as const;
+const DOW_PROFILE_NAMES = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"] as const;
+const CRASH_WHO_OVERLAP_COPY = "Groups can overlap. Counts are crashes involving that class, not exclusive people shares. Person rows do not replace Crash.";
+const CRASH_CLOCK_COPY = "Recorded clock time on police crash records. Blank or unparseable time is Unknown. 12:00 AM is published midnight, not a blank. Not a danger, risk, cause, or hotspot claim.";
+const P25_PROJECTION_SHA256 = "b33dcc8a9e21ad88e5798eb772f85ee7157e512de09ce49fdc10394921a7d454";
+const CRASH_SNAPSHOT_SHA256 = "0c2663aa4485ffb29801e8268946e4343781eb84fc0635b14767f71ea8e9490c";
+const EASTERN_C001 = "HL-CORRIDOR-L26B-v0-B3-SC338430-LGC01-C001";
+const EASTERN_C002 = "HL-CORRIDOR-L26B-v0-B3-SC338430-LGC01-C002";
+const CORRIDOR_OVERLAY_VERSION = "HL-CORRIDOR-LION26B-v0-EASTERN-PKWY-OVERLAY-v1";
+
+function mergeCorridorOverlay(released: P25Projection, overlay: CorridorOverlay): P25Projection {
+  if (overlay.meta.overlayVersion !== CORRIDOR_OVERLAY_VERSION) throw new Error("Corridor overlay version mismatch");
+  if (overlay.meta.corridorVersion !== released.meta.corridorVersion) throw new Error("Corridor overlay family mismatch");
+  if (overlay.meta.p25ProjectionSha256 !== P25_PROJECTION_SHA256) throw new Error("Corridor overlay P2.5 binding mismatch");
+  if (overlay.meta.officialDotCorridorLayer) throw new Error("Corridor overlay must not be a DOT program layer");
+  const overlayIds = Object.keys(overlay.corridors);
+  if (overlayIds.length !== 2 || !overlay.corridors[EASTERN_C001] || !overlay.corridors[EASTERN_C002]) {
+    throw new Error("Eastern Parkway overlay must be two LION components");
+  }
+  const corridors = { ...released.corridors };
+  const places = { ...released.places };
+  for (const corridor of Object.values(overlay.corridors)) {
+    if (corridors[corridor.corridorId]) throw new Error(`Overlay collides with released corridor ${corridor.corridorId}`);
+    if (corridor.displayName === "Utica Avenue") throw new Error("Utica is not this overlay");
+    corridors[corridor.corridorId] = corridor;
+    for (const placeId of corridor.placeIds) {
+      const place = places[placeId];
+      if (!place) continue;
+      places[placeId] = { ...place, corridorIds: [...new Set([...place.corridorIds, corridor.corridorId])].sort() };
+    }
+  }
+  return { ...released, places, corridors };
+}
+
+function corridorComponentLabel(corridor: P25Corridor) {
+  return `${corridor.corridorId} · ${corridor.displayName} · ${corridor.boroughName} · component ${corridor.componentOrdinal}`;
+}
+
+function corridorPickerLabel(corridor: P25Corridor) {
+  return `${corridor.displayName} · ${corridor.boroughName} · component ${corridor.componentOrdinal}`;
+}
+
+function corridorRollup(corridor: P25Corridor, lens: Lens) {
+  if (lens === "injury" && corridor.conservation36) {
+    return { count: corridor.conservation36.uniqueCollisionIds, ids: corridor.conservation36.ids, noun: "unique crash records" };
+  }
+  return {
+    count: corridor.metrics[lens].count,
+    ids: corridor.metrics[lens].ids,
+    noun: lens === "injury" ? "unique injury-involved crash records" : "unique fatal crash records",
+  };
+}
+
+function shareFreeze(data: AppData, p25: P25Projection) {
+  return {
+    objectVersion: data.meta.objectVersion,
+    assignmentVersion: data.meta.assignmentVersion,
+    analysisEnd: data.meta.analysisEnd,
+    p25ObjectVersion: p25.meta.objectVersion,
+    corridorVersion: p25.meta.corridorVersion,
+  };
+}
+
+function shareUniverse(data: AppData, p25: P25Projection) {
+  const places = Object.fromEntries(data.places.map((place) => [place.id, place]));
+  const corridorIds = new Set(Object.keys(p25.corridors));
+  const corridorPlaceIds = Object.fromEntries(
+    Object.values(p25.corridors).map((corridor) => [corridor.corridorId, new Set(corridor.placeIds)]),
+  );
+  return { places, corridorIds, corridorPlaceIds, freeze: shareFreeze(data, p25) };
+}
 
 function activeP25Count(projection: P25Projection, placeId: string, window: WindowKey, roadUser: RoadUser, lens: Lens) {
   return projection.places[placeId]?.counts[window]?.[roadUser]?.[lens] ?? 0;
@@ -433,6 +575,20 @@ const CLAIM_CLASSES = [
 const NYC_BOUNDS: [[number, number], [number, number]] = [[-74.26, 40.49], [-73.70, 40.92]];
 const NYC_MAX_BOUNDS: [[number, number], [number, number]] = [[-74.36, 40.40], [-73.59, 41.01]];
 const NYC_ORTHO_BOUNDS: [number, number, number, number] = [-74.26, 40.49, -73.70, 40.92];
+
+function overlayCameraPadding(hudHeight: number) {
+  return { top: Math.max(0, hudHeight + 10), right: 24, bottom: 24, left: 24 };
+}
+
+function applyOverlayCamera(map: MapLibreMap, hudHeight: number) {
+  map.resize();
+  map.setPadding(overlayCameraPadding(hudHeight));
+}
+
+function fitNycInRemainingViewport(map: MapLibreMap, hudHeight: number, duration: number) {
+  applyOverlayCamera(map, hudHeight);
+  map.fitBounds(NYC_BOUNDS, { duration });
+}
 const TRANSPARENT_PNG = Uint8Array.from(
   atob("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII="),
   (character) => character.charCodeAt(0),
@@ -779,6 +935,14 @@ function formatDateLong(value: string) {
   return new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", year: "numeric", timeZone: "UTC" }).format(new Date(`${value}T00:00:00Z`));
 }
 
+function formatCrashTime(value: string) {
+  const [hourText, minuteText] = value.split(":");
+  const hour = Number(hourText);
+  const minute = Number(minuteText);
+  if (!Number.isFinite(hour) || !Number.isFinite(minute)) return value;
+  return new Intl.DateTimeFormat("en-US", { hour: "numeric", minute: "2-digit", timeZone: "UTC" }).format(new Date(Date.UTC(2000, 0, 1, hour, minute)));
+}
+
 function otiFallbackTemplate(httpsTemplate: string) {
   return httpsTemplate.replace(/^https:\/\//, "oti-fallback://");
 }
@@ -804,9 +968,9 @@ function basemapStyle(tileTemplate: string) {
       },
     },
     layers: [
-      { id: "harbor-atmosphere", type: "background" as const, paint: { "background-color": "#a8b8b4" } },
-      { id: "free-context", type: "raster" as const, source: "context", paint: { "raster-opacity": 0.46, "raster-saturation": -0.92, "raster-contrast": -0.12, "raster-brightness-min": 0.2, "raster-brightness-max": 0.88 } },
-      { id: "ortho", type: "raster" as const, source: "ortho", paint: { "raster-opacity": 0.56, "raster-saturation": -0.52, "raster-contrast": -0.02, "raster-fade-duration": 0 } },
+      { id: "harbor-atmosphere", type: "background" as const, paint: { "background-color": "#071219" } },
+      { id: "free-context", type: "raster" as const, source: "context", paint: { "raster-opacity": 0.82, "raster-saturation": -1, "raster-contrast": 0.28, "raster-brightness-min": 0.02, "raster-brightness-max": 0.28 } },
+      { id: "ortho", type: "raster" as const, source: "ortho", layout: { visibility: "none" as const }, paint: { "raster-opacity": 0.48, "raster-saturation": -0.92, "raster-contrast": 0.12, "raster-brightness-min": 0.03, "raster-brightness-max": 0.42, "raster-fade-duration": 0 } },
     ],
   };
 }
@@ -919,9 +1083,9 @@ function StateTag({ state }: { state: Place["lensAgreementState"] }) {
   return <span className={`state-tag state-${state}`}>{STATE_LABELS[state]}</span>;
 }
 
-function CountMark({ label, value, active }: { label: string; value: number; active?: boolean }) {
+function CountMark({ label, value, active, tone }: { label: string; value: number; active?: boolean; tone: Lens }) {
   return (
-    <div className={`count-mark ${active ? "active" : ""}`}>
+    <div className={`count-mark ${tone} ${active ? "active" : ""}`} data-testid={`count-mark-${tone}`}>
       <span>{label}</span>
       <strong>{value}</strong>
       <small>collision records</small>
@@ -929,31 +1093,270 @@ function CountMark({ label, value, active }: { label: string; value: number; act
   );
 }
 
-function EvidenceIds({ title, ids, tone }: { title: string; ids: number[]; tone: Lens }) {
-  const [expanded, setExpanded] = useState(false);
-  const visible = expanded ? ids : ids.slice(0, 8);
+function crashYearKey(crashWhen: CrashWhenIndex, id: number) {
+  const date = crashWhen.records[String(id)]?.crashDate;
+  return date ? date.slice(0, 4) : "Unknown";
+}
+
+function groupCrashIdsByYear(ids: number[], crashWhen: CrashWhenIndex) {
+  const grouped = new Map<string, number[]>();
+  for (const id of new Set(ids)) {
+    const year = crashYearKey(crashWhen, id);
+    const list = grouped.get(year) ?? [];
+    list.push(id);
+    grouped.set(year, list);
+  }
+  const years = [...grouped.keys()].sort((left, right) => {
+    if (left === "Unknown") return 1;
+    if (right === "Unknown") return -1;
+    return right.localeCompare(left);
+  });
+  return years.map((year) => {
+    const yearIds = grouped.get(year) ?? [];
+    yearIds.sort((a, b) => {
+      const left = crashWhen.records[String(a)];
+      const right = crashWhen.records[String(b)];
+      const leftKey = `${left?.crashDate ?? ""}T${left?.crashTime ?? ""}`;
+      const rightKey = `${right?.crashDate ?? ""}T${right?.crashTime ?? ""}`;
+      return rightKey.localeCompare(leftKey) || b - a;
+    });
+    return { year, ids: yearIds };
+  });
+}
+
+function crashWhoRecord(crashWho: CrashWhoIndex, id: number) {
+  return crashWho.records[String(id)];
+}
+
+function crashWhoFlagLabels(record: CrashWhoRecord | undefined) {
+  if (!record) return ["Uncategorized"];
+  const flags = CRASH_WHO_FLAG_LABELS.filter(([key]) => record[key]).map(([, label]) => label);
+  if (record.uncategorized || !flags.length) return ["Uncategorized"];
+  return flags;
+}
+
+function countCrashWhoFlags(ids: number[], crashWho: CrashWhoIndex) {
+  const counts = { pedestrian: 0, cyclist: 0, motorist: 0, uncategorized: 0, overlapTwoOrMore: 0, records: 0 };
+  for (const id of new Set(ids)) {
+    counts.records += 1;
+    const record = crashWhoRecord(crashWho, id);
+    const named = record ? Number(record.pedestrian) + Number(record.cyclist) + Number(record.motorist) : 0;
+    if (record?.pedestrian) counts.pedestrian += 1;
+    if (record?.cyclist) counts.cyclist += 1;
+    if (record?.motorist) counts.motorist += 1;
+    if (!record || record.uncategorized || named === 0) counts.uncategorized += 1;
+    if (named >= 2) counts.overlapTwoOrMore += 1;
+  }
+  return counts;
+}
+
+function sumCrashPeople(ids: number[], crashWho: CrashWhoIndex) {
+  let injured = 0;
+  let killed = 0;
+  let nullInjured = 0;
+  let nullKilled = 0;
+  const uniqueIds = [...new Set(ids)];
+  for (const id of uniqueIds) {
+    const record = crashWhoRecord(crashWho, id);
+    if (record?.personsInjured == null) nullInjured += 1;
+    else injured += record.personsInjured;
+    if (record?.personsKilled == null) nullKilled += 1;
+    else killed += record.personsKilled;
+  }
+  return { injured, killed, nullInjured, nullKilled, records: uniqueIds.length };
+}
+
+function hourFromCrashTime(value: string | null | undefined) {
+  if (!value) return "Unknown";
+  const hour = value.slice(0, 2);
+  const numeric = Number(hour);
+  if (!/^\d{2}$/.test(hour) || numeric < 0 || numeric > 23) return "Unknown";
+  return hour;
+}
+
+function dowFromCrashDate(value: string | null | undefined) {
+  if (!value) return "Unknown";
+  const parsed = new Date(`${value}T00:00:00Z`);
+  if (Number.isNaN(parsed.getTime())) return "Unknown";
+  return DOW_PROFILE_NAMES[(parsed.getUTCDay() + 6) % 7];
+}
+
+function crashClockProfile(ids: number[], crashWhen: CrashWhenIndex) {
+  const hours = Array.from({ length: 24 }, () => 0);
+  const dow = Object.fromEntries(DOW_PROFILE_NAMES.map((name) => [name, 0])) as Record<(typeof DOW_PROFILE_NAMES)[number], number>;
+  let unknownHour = 0;
+  let unknownDow = 0;
+  const uniqueIds = [...new Set(ids)];
+  for (const id of uniqueIds) {
+    const when = crashWhen.records[String(id)];
+    const hour = hourFromCrashTime(when?.crashTime);
+    if (hour === "Unknown") unknownHour += 1;
+    else hours[Number(hour)] += 1;
+    const day = dowFromCrashDate(when?.crashDate);
+    if (day === "Unknown") unknownDow += 1;
+    else dow[day] += 1;
+  }
+  return { hours, dow, unknownHour, unknownDow, total: uniqueIds.length };
+}
+
+function CrashWhoFlags({ id, crashWho }: { id: number; crashWho: CrashWhoIndex }) {
+  const record = crashWhoRecord(crashWho, id);
+  const flags = crashWhoFlagLabels(record);
   return (
-    <section className="evidence-id-block">
-      <div className="section-row">
-        <div>
-          <span className="eyebrow">Exact support set</span>
-          <h4>{title}</h4>
-        </div>
-        <span className={`count-pill ${tone}`}>{ids.length}</span>
+    <div className="crash-who-flags" data-testid={`crash-who-${id}`} data-uncategorized={flags.includes("Uncategorized") ? "true" : "false"} data-pedestrian={record?.pedestrian ? "true" : "false"} data-cyclist={record?.cyclist ? "true" : "false"} data-motorist={record?.motorist ? "true" : "false"}>
+      {flags.map((label) => <span key={label} className={`crash-who-flag${label === "Uncategorized" ? " uncategorized" : ""}`}>{label}</span>)}
+    </div>
+  );
+}
+
+function CrashWhoBreakdown({ ids, crashWho }: { ids: number[]; crashWho: CrashWhoIndex }) {
+  const counts = countCrashWhoFlags(ids, crashWho);
+  return (
+    <section className="crash-who-breakdown" data-testid="crash-who-breakdown">
+      <span className="eyebrow">Who on these crash records</span>
+      <div className="crash-who-counts">
+        <span data-testid="crash-who-count-pedestrian"><strong>{counts.pedestrian}</strong> Walking</span>
+        <span data-testid="crash-who-count-cyclist"><strong>{counts.cyclist}</strong> Biking</span>
+        <span data-testid="crash-who-count-motorist"><strong>{counts.motorist}</strong> Driving</span>
+        <span data-testid="crash-who-count-uncategorized"><strong>{counts.uncategorized}</strong> Uncategorized</span>
       </div>
-      {ids.length ? (
-        <>
-          <div className="id-list">
-            {visible.map((id) => <code key={id}>{id}</code>)}
-          </div>
-          {ids.length > 8 && (
-            <button className="text-button" onClick={() => setExpanded(!expanded)}>
-              {expanded ? "Show fewer IDs" : `Inspect all ${ids.length} IDs`}
-            </button>
-          )}
-        </>
-      ) : <p className="empty-copy">No collision records satisfy this lens at this place.</p>}
+      <p>{CRASH_WHO_OVERLAP_COPY}</p>
     </section>
+  );
+}
+
+function CrashPeopleBeside({ ids, crashWho, lens }: { ids: number[]; crashWho: CrashWhoIndex; lens: Lens }) {
+  const people = sumCrashPeople(ids, crashWho);
+  return (
+    <div className="crash-people-beside" data-testid="crash-people-beside">
+      <strong>{people.records} crash records</strong>
+      <span>{people.injured} people recorded injured · {people.killed} people recorded killed on those Crash fields</span>
+      <small>Beside frequency — do not replace Hurt/Died record counts with people. Person rows do not replace Crash.{people.nullKilled || people.nullInjured ? ` ${people.nullInjured} injured and ${people.nullKilled} killed published counts are blank.` : ""} {lens === "injury" ? "Hurt remains the crash-record count." : "Died remains the crash-record count."}</small>
+    </div>
+  );
+}
+
+function CrashClockProfile({ ids, crashWhen }: { ids: number[]; crashWhen: CrashWhenIndex }) {
+  const profile = crashClockProfile(ids, crashWhen);
+  const maxHour = Math.max(...profile.hours, profile.unknownHour, 1);
+  const maxDow = Math.max(...Object.values(profile.dow), profile.unknownDow, 1);
+  return (
+    <section className="crash-clock-profile" data-testid="crash-clock-profile">
+      <span className="eyebrow">Recorded clock time</span>
+      <p>{CRASH_CLOCK_COPY}</p>
+      <div className="clock-hour-bars" data-testid="crash-hour-bars" aria-label="Records by published crash hour">
+        {profile.hours.map((count, hour) => (
+          <div key={hour} className="clock-bar" data-hour={String(hour).padStart(2, "0")} data-count={count}>
+            <span style={{ height: `${Math.max(4, (count / maxHour) * 100)}%` }} />
+            <small>{String(hour).padStart(2, "0")}</small>
+          </div>
+        ))}
+      </div>
+      <p className="clock-unknown" data-testid="crash-hour-unknown">{profile.unknownHour ? `${profile.unknownHour} of ${profile.total} records have Unknown published time.` : `All ${profile.total} records have a published time.`}</p>
+      <div className="clock-dow-bars" data-testid="crash-dow-bars" aria-label="Records by published day of week">
+        {DOW_PROFILE_NAMES.map((name) => (
+          <div key={name} className="clock-dow" data-dow={name} data-count={profile.dow[name]}>
+            <span style={{ width: `${Math.max(6, (profile.dow[name] / maxDow) * 100)}%` }} />
+            <small>{name.slice(0, 3)} {profile.dow[name]}</small>
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function crashLogLead(injuryCount: number, fatalCount: number) {
+  const parts = [
+    injuryCount ? `${injuryCount} hurt-report record${injuryCount === 1 ? "" : "s"}` : null,
+    fatalCount ? `${fatalCount} death record${fatalCount === 1 ? "" : "s"}` : null,
+  ].filter(Boolean);
+  if (!parts.length) return "No crash records under this lock.";
+  return `${parts.join(" and ")}. Open a year to see the dates.`;
+}
+
+function YearChips({
+  buckets,
+  selectedYear,
+  onSelect,
+  testId,
+}: {
+  buckets: { year: string; ids: number[] }[];
+  selectedYear?: string | null;
+  onSelect?: (year: string) => void;
+  testId: string;
+}) {
+  if (!buckets.length) return null;
+  return (
+    <div className="year-chips" data-testid={testId} role="group" aria-label="Crash years">
+      {buckets.map(({ year, ids }) => {
+        const className = `year-chip${selectedYear === year ? " active" : ""}`;
+        const body = <><span>{year}</span><strong>{ids.length}</strong></>;
+        return onSelect ? (
+          <button key={year} type="button" className={className} data-testid={`year-chip-${year}`} onClick={() => onSelect(year)}>{body}</button>
+        ) : (
+          <span key={year} className={className} data-testid={`year-chip-${year}`}>{body}</span>
+        );
+      })}
+    </div>
+  );
+}
+
+function CrashYearLog({
+  injuryIds,
+  fatalIds,
+  crashWhen,
+  crashWho,
+  focusYear,
+  onFocusYear,
+}: {
+  injuryIds: number[];
+  fatalIds: number[];
+  crashWhen: CrashWhenIndex;
+  crashWho: CrashWhoIndex;
+  focusYear: string | null;
+  onFocusYear: (year: string) => void;
+}) {
+  const fatalSet = useMemo(() => new Set(fatalIds), [fatalIds]);
+  const buckets = useMemo(() => groupCrashIdsByYear([...injuryIds, ...fatalIds], crashWhen), [crashWhen, fatalIds, injuryIds]);
+  const openYear = focusYear && buckets.some((bucket) => bucket.year === focusYear) ? focusYear : (buckets[0]?.year ?? null);
+  const openRef = useRef<HTMLElement | null>(null);
+  useEffect(() => {
+    openRef.current?.scrollIntoView({ block: "nearest" });
+  }, [openYear]);
+  if (!buckets.length) return <p className="empty-copy">No collision records satisfy this lock at this place.</p>;
+  return (
+    <div className="crash-year-log" data-testid="crash-year-log">
+      {buckets.map((bucket) => {
+        const open = bucket.year === openYear;
+        return (
+          <section key={bucket.year} ref={open ? openRef : undefined} className={`crash-year-block${open ? " open" : ""}`} data-testid={`crash-year-${bucket.year}`} data-year={bucket.year}>
+            <button type="button" className="crash-year-toggle" aria-expanded={open} onClick={() => onFocusYear(bucket.year)}>
+              <strong>{bucket.year}</strong>
+              <span>{bucket.ids.length}</span>
+            </button>
+            {open && (
+              <ol className="crash-record-list" data-testid={bucket.year === "Unknown" ? "dated-unknown-records" : `dated-year-${bucket.year}-records`}>
+                {bucket.ids.map((id) => {
+                  const when = crashWhen.records[String(id)];
+                  const tone: Lens = fatalSet.has(id) ? "fatal" : "injury";
+                  return (
+                    <li key={id}>
+                      <div className="crash-when-primary">
+                        <time dateTime={when?.crashDate ?? undefined}>{when?.crashDate ? formatDateLong(when.crashDate) : "Unknown"}</time>
+                        {when?.crashTime ? <span className="crash-time">{formatCrashTime(when.crashTime)}</span> : null}
+                      </div>
+                      <span className={`crash-row-lens ${tone}`}>{tone === "fatal" ? "Died" : "Hurt"}</span>
+                      <CrashWhoFlags id={id} crashWho={crashWho} />
+                      <code>Collision {id}</code>
+                    </li>
+                  );
+                })}
+              </ol>
+            )}
+          </section>
+        );
+      })}
+    </div>
   );
 }
 
@@ -1004,7 +1407,7 @@ function MapSurface({
         container: containerRef.current,
         center: [-73.94, 40.72],
         zoom: 10.2,
-        minZoom: 9,
+        minZoom: 8.5,
         maxZoom: 19,
         attributionControl: false,
         style: basemapStyle(data.meta.imagery.tileTemplate),
@@ -1153,8 +1556,10 @@ function Phase32MapSurface({
   comparePlaces,
   cameraCommand,
   focusGroup,
+  hudHeight,
   eligiblePlaceIds,
-  filtersActive,
+  emphasizedPlaceIds,
+  showOldPhoto,
   onSelect,
   onPreview,
   onFocusGroup,
@@ -1169,8 +1574,10 @@ function Phase32MapSurface({
   comparePlaces: Place[];
   cameraCommand: CameraCommand;
   focusGroup: FocusGroup | null;
+  hudHeight: number;
   eligiblePlaceIds: string[];
-  filtersActive: boolean;
+  emphasizedPlaceIds: string[];
+  showOldPhoto: boolean;
   onSelect: (id: string) => void;
   onPreview: (id: string | null) => void;
   onFocusGroup: (ids: string[]) => void;
@@ -1181,12 +1588,21 @@ function Phase32MapSurface({
   const onSelectRef = useRef(onSelect);
   const onPreviewRef = useRef(onPreview);
   const onFocusGroupRef = useRef(onFocusGroup);
+  const cameraCommandRef = useRef(cameraCommand);
+  const selectedRef = useRef(selected);
+  const focusGroupRef = useRef(focusGroup);
+  const hudHeightRef = useRef(hudHeight);
+  const hoveredFeatureRef = useRef<{ source: "places" | "focus-places"; id: string | number } | null>(null);
   const [mapReady, setMapReady] = useState(false);
   const [mapError, setMapError] = useState(false);
 
   useEffect(() => { onSelectRef.current = onSelect; }, [onSelect]);
   useEffect(() => { onPreviewRef.current = onPreview; }, [onPreview]);
   useEffect(() => { onFocusGroupRef.current = onFocusGroup; }, [onFocusGroup]);
+  useEffect(() => { cameraCommandRef.current = cameraCommand; }, [cameraCommand]);
+  useEffect(() => { selectedRef.current = selected; }, [selected]);
+  useEffect(() => { focusGroupRef.current = focusGroup; }, [focusGroup]);
+  useEffect(() => { hudHeightRef.current = hudHeight; }, [hudHeight]);
 
   useEffect(() => {
     if (!containerRef.current || mapRef.current) return;
@@ -1200,16 +1616,19 @@ function Phase32MapSurface({
       if (cancelled || !containerRef.current) return;
       prepareMapLibre(module);
       placesGeoRef.current = placesGeo;
+      const initialEmphasizedIds = new Set(emphasizedPlaceIds);
       const initialPlaces = {
         ...placesGeo,
-        features: placesGeo.features.filter((feature) => feature.properties?.placeType === "intersection_node"),
+        features: placesGeo.features
+          .filter((feature) => feature.properties?.placeType === "intersection_node")
+          .map((feature) => ({ ...feature, properties: { ...feature.properties, emphasized: initialEmphasizedIds.has(String(feature.properties?.id ?? "")) } })),
       } as FeatureCollection;
       containerRef.current.dataset.rankedSourceFeatures = String(initialPlaces.features.length);
       const map = new module.Map({
         container: containerRef.current,
         center: [-73.94, 40.72],
         zoom: 9.6,
-        minZoom: 9,
+        minZoom: 8.5,
         maxZoom: 19,
         maxBounds: NYC_MAX_BOUNDS,
         attributionControl: false,
@@ -1222,17 +1641,20 @@ function Phase32MapSurface({
       map.touchZoomRotate.disableRotation();
       map.on("load", () => {
         try {
-        map.addSource("places", { type: "geojson", data: initialPlaces, cluster: true, clusterRadius: 28, clusterMaxZoom: 10 });
-        map.addLayer({ id: "cluster-halo", type: "circle", source: "places", filter: ["has", "point_count"], paint: { "circle-color": "rgba(255,254,249,.82)", "circle-radius": ["step", ["get", "point_count"], 18, 80, 23, 300, 29, 900, 35], "circle-opacity": 0.95 } });
+        map.addSource("places", { type: "geojson", data: initialPlaces, promoteId: "id", cluster: true, clusterRadius: 28, clusterMaxZoom: 10, clusterProperties: { lamp_count: ["+", ["case", ["==", ["get", "emphasized"], true], 1, 0]] } });
+        map.addLayer({ id: "cluster-halo", type: "circle", source: "places", filter: ["has", "point_count"], paint: { "circle-color": "rgba(255,255,255,.24)", "circle-radius": ["step", ["get", "point_count"], 18, 80, 23, 300, 29, 900, 35], "circle-opacity": 0.82, "circle-blur": 0.35 } });
         map.addLayer({ id: "place-clusters", type: "circle", source: "places", filter: ["has", "point_count"], paint: { "circle-color": "#173a4b", "circle-radius": ["step", ["get", "point_count"], 13, 80, 18, 300, 24, 900, 30], "circle-stroke-color": "#f5f2e8", "circle-stroke-width": 2, "circle-opacity": 0.96 } });
         map.addLayer({ id: "cluster-count", type: "symbol", source: "places", filter: ["has", "point_count"], layout: { "text-field": ["get", "point_count_abbreviated"], "text-size": 11, "text-allow-overlap": true }, paint: { "text-color": "#ffffff", "text-halo-color": "#173a4b", "text-halo-width": 1 } });
-        map.addLayer({ id: "places-point", type: "circle", source: "places", filter: ["!", ["has", "point_count"]], paint: { "circle-color": "#3f817b", "circle-radius": NEIGHBORHOOD_POINT_RADIUS, "circle-opacity": NEIGHBORHOOD_POINT_OPACITY, "circle-stroke-color": "#fffaf0", "circle-stroke-width": 0.8, "circle-stroke-opacity": 0.55 } });
+        map.addLayer({ id: "places-point", type: "circle", source: "places", filter: ["!", ["has", "point_count"]], paint: { "circle-color": "#3f817b", "circle-radius": NEIGHBORHOOD_POINT_RADIUS, "circle-opacity": NEIGHBORHOOD_POINT_OPACITY, "circle-blur": 0.18, "circle-stroke-color": "rgba(255,255,255,.9)", "circle-stroke-width": 0.8, "circle-stroke-opacity": 0.75 } });
+        map.addLayer({ id: "places-core", type: "circle", source: "places", filter: ["!", ["has", "point_count"]], paint: { "circle-color": "#ffffff", "circle-radius": 1.25, "circle-opacity": 0.9 } });
+        map.addLayer({ id: "places-hit", type: "circle", source: "places", filter: ["!", ["has", "point_count"]], paint: { "circle-color": "#ffffff", "circle-radius": 11, "circle-opacity": 0.001, "circle-stroke-width": 0 } });
         map.addLayer({ id: "midblock-ticks", type: "symbol", source: "places", filter: ["all", ["!", ["has", "point_count"]], ["==", ["get", "placeType"], "midblock_segment"]], layout: { visibility: "none", "text-field": "━", "text-size": ["interpolate", ["linear"], ["zoom"], 9, 12, 12, 14, 16, 18], "text-allow-overlap": true }, paint: { "text-color": "#173a4b", "text-halo-color": "#fffaf0", "text-halo-width": 1.4, "text-opacity": ["interpolate", ["linear"], ["zoom"], 11, 0.9, 14, 0.45] } });
-        map.addSource("focus-places", { type: "geojson", data: emptyPlaces(), cluster: true, clusterRadius: 36, clusterMaxZoom: 15 });
+        map.addSource("focus-places", { type: "geojson", data: emptyPlaces(), promoteId: "id", cluster: true, clusterRadius: 36, clusterMaxZoom: 15, clusterProperties: { lamp_count: ["+", ["case", ["==", ["get", "emphasized"], true], 1, 0]] } });
         map.addLayer({ id: "focus-cluster-halo", type: "circle", source: "focus-places", filter: ["has", "point_count"], layout: { visibility: "none" }, paint: { "circle-color": "rgba(255,254,249,.9)", "circle-radius": ["step", ["get", "point_count"], 20, 40, 24, 120, 30, 400, 36], "circle-opacity": 0.96 } });
         map.addLayer({ id: "focus-clusters", type: "circle", source: "focus-places", filter: ["has", "point_count"], layout: { visibility: "none" }, paint: { "circle-color": "#173a4b", "circle-radius": ["step", ["get", "point_count"], 14, 40, 18, 120, 24, 400, 30], "circle-stroke-color": "#e0a13a", "circle-stroke-width": 3, "circle-opacity": 0.98 } });
         map.addLayer({ id: "focus-cluster-count", type: "symbol", source: "focus-places", filter: ["has", "point_count"], layout: { visibility: "none", "text-field": ["get", "point_count_abbreviated"], "text-size": 12, "text-allow-overlap": true }, paint: { "text-color": "#ffffff", "text-halo-color": "#173a4b", "text-halo-width": 1 } });
         map.addLayer({ id: "focus-points", type: "circle", source: "focus-places", filter: ["!", ["has", "point_count"]], layout: { visibility: "none" }, paint: { "circle-color": "#4c8c84", "circle-radius": ["interpolate", ["linear"], ["zoom"], 10, 6, 13, 8, 16, 11], "circle-opacity": 1, "circle-stroke-color": "#fffaf0", "circle-stroke-width": 2 } });
+        map.addLayer({ id: "focus-hit", type: "circle", source: "focus-places", filter: ["!", ["has", "point_count"]], layout: { visibility: "none" }, paint: { "circle-color": "#ffffff", "circle-radius": 12, "circle-opacity": 0.001, "circle-stroke-width": 0 } });
         map.addLayer({ id: "focus-midblock-ticks", type: "symbol", source: "focus-places", filter: ["all", ["!", ["has", "point_count"]], ["==", ["get", "placeType"], "midblock_segment"]], layout: { visibility: "none", "text-field": "━", "text-size": ["interpolate", ["linear"], ["zoom"], 9, 16, 12, 22, 16, 30], "text-allow-overlap": true }, paint: { "text-color": "#2d6764", "text-halo-color": "#fffaf0", "text-halo-width": 2 } });
         map.addSource("context-places", { type: "geojson", data: emptyPlaces() });
         map.addLayer({ id: "context-points", type: "circle", source: "context-places", layout: { visibility: "none" }, minzoom: 12.5, paint: { "circle-color": "#8a918c", "circle-radius": 2.4, "circle-opacity": 0.22, "circle-stroke-color": "#dfe3dc", "circle-stroke-width": 0.6 } });
@@ -1240,11 +1662,13 @@ function Phase32MapSurface({
         map.addLayer({ id: "possible-points", type: "circle", source: "uncertainty", filter: ["==", ["get", "assignmentClass"], "intersection_possible_or_exception"], layout: { visibility: "none" }, paint: { "circle-color": "rgba(0,0,0,0)", "circle-radius": 2.4, "circle-opacity": 0.28, "circle-stroke-color": "#bd7b23", "circle-stroke-width": 0.9, "circle-stroke-opacity": 0.28 } });
         map.addLayer({ id: "unresolved-points", type: "circle", source: "uncertainty", filter: ["==", ["get", "assignmentClass"], "unresolved"], layout: { visibility: "none" }, paint: { "circle-color": "#6d7480", "circle-radius": 1.8, "circle-opacity": 0.22 } });
         map.addSource("selected-place", { type: "geojson", data: { type: "FeatureCollection", features: [] } });
-        map.addLayer({ id: "selected-halo", type: "circle", source: "selected-place", paint: { "circle-radius": 22, "circle-color": "#fffef9", "circle-opacity": 0.98, "circle-stroke-color": "#102d3a", "circle-stroke-width": 6 } });
-        map.addLayer({ id: "selected-ring", type: "circle", source: "selected-place", paint: { "circle-radius": 12, "circle-color": "#e0a13a", "circle-opacity": 1, "circle-stroke-color": "#102d3a", "circle-stroke-width": 2.5 } });
+        map.addLayer({ id: "selected-halo", type: "circle", source: "selected-place", paint: { "circle-radius": 18, "circle-color": "#071219", "circle-opacity": 0.92, "circle-stroke-color": "#ffffff", "circle-stroke-width": 2.5 } });
+        map.addLayer({ id: "selected-ring", type: "circle", source: "selected-place", paint: { "circle-radius": 9, "circle-color": "#e0a13a", "circle-opacity": 1, "circle-blur": 0.08, "circle-stroke-color": "#ffffff", "circle-stroke-width": 1.5 } });
         map.addSource("compare-pins", { type: "geojson", data: { type: "FeatureCollection", features: [] } });
-        map.addLayer({ id: "compare-pin-rings", type: "circle", source: "compare-pins", paint: { "circle-radius": 14, "circle-color": "#173a4b", "circle-stroke-color": "#fffef9", "circle-stroke-width": 3 } });
-        map.addLayer({ id: "compare-pin-labels", type: "symbol", source: "compare-pins", layout: { "text-field": ["get", "label"], "text-size": 11 }, paint: { "text-color": "#ffffff" } });
+        map.addLayer({ id: "compare-pin-glow", type: "circle", source: "compare-pins", paint: { "circle-radius": 22, "circle-color": ["match", ["get", "label"], "A", "#d98b28", "#70b8ad"], "circle-opacity": 0.38, "circle-blur": 0.82 } });
+        map.addLayer({ id: "compare-pin-rings", type: "circle", source: "compare-pins", paint: { "circle-radius": 8, "circle-color": "#ffffff", "circle-stroke-color": ["match", ["get", "label"], "A", "#d98b28", "#70b8ad"], "circle-stroke-width": 2.2 } });
+        map.addLayer({ id: "compare-pin-core", type: "circle", source: "compare-pins", paint: { "circle-radius": 2.2, "circle-color": "#ffffff", "circle-opacity": 1 } });
+        map.addLayer({ id: "compare-pin-labels", type: "symbol", source: "compare-pins", layout: { "text-field": ["get", "label"], "text-size": 12, "text-offset": [0, -1.55], "text-allow-overlap": true }, paint: { "text-color": "#ffffff", "text-halo-color": "#071219", "text-halo-width": 1.4 } });
 
         const selectFeature = (event: MapMouseEvent) => {
           const id = event.features?.[0]?.properties?.id;
@@ -1254,18 +1678,32 @@ function Phase32MapSurface({
           const id = event.features?.[0]?.properties?.id;
           onPreviewRef.current(id ? String(id) : null);
         };
-        map.on("click", "places-point", selectFeature);
-        map.on("click", "midblock-ticks", selectFeature);
-        map.on("click", "focus-points", selectFeature);
-        map.on("click", "focus-midblock-ticks", selectFeature);
-        map.on("mousemove", "places-point", previewFeature);
-        map.on("mousemove", "midblock-ticks", previewFeature);
-        map.on("mousemove", "focus-points", previewFeature);
-        map.on("mousemove", "focus-midblock-ticks", previewFeature);
-        map.on("mouseleave", "places-point", () => onPreviewRef.current(null));
-        map.on("mouseleave", "midblock-ticks", () => onPreviewRef.current(null));
-        map.on("mouseleave", "focus-points", () => onPreviewRef.current(null));
-        map.on("mouseleave", "focus-midblock-ticks", () => onPreviewRef.current(null));
+        const clearHoveredFeature = () => {
+          const previous = hoveredFeatureRef.current;
+          if (previous) {
+            try { map.setFeatureState({ source: previous.source, id: previous.id }, { hover: false }); } catch { /* source may be swapping after a filter change */ }
+          }
+          hoveredFeatureRef.current = null;
+          onPreviewRef.current(null);
+        };
+        const hoverFeature = (source: "places" | "focus-places", event: MapMouseEvent) => {
+          const feature = event.features?.[0];
+          const id = feature?.id ?? feature?.properties?.id;
+          if (id === undefined || id === null) return;
+          const previous = hoveredFeatureRef.current;
+          if (previous && (previous.source !== source || previous.id !== id)) {
+            try { map.setFeatureState({ source: previous.source, id: previous.id }, { hover: false }); } catch { /* source may be swapping after a filter change */ }
+          }
+          map.setFeatureState({ source, id }, { hover: true });
+          hoveredFeatureRef.current = { source, id };
+          previewFeature(event);
+        };
+        map.on("click", "places-hit", selectFeature);
+        map.on("click", "focus-hit", selectFeature);
+        map.on("mousemove", "places-hit", (event: MapMouseEvent) => hoverFeature("places", event));
+        map.on("mousemove", "focus-hit", (event: MapMouseEvent) => hoverFeature("focus-places", event));
+        map.on("mouseleave", "places-hit", clearHoveredFeature);
+        map.on("mouseleave", "focus-hit", clearHoveredFeature);
         const focusCluster = async (sourceId: "places" | "focus-places", event: MapMouseEvent) => {
           const feature = event.features?.[0];
           const clusterId = feature?.properties?.cluster_id;
@@ -1278,7 +1716,7 @@ function Phase32MapSurface({
         };
         map.on("click", "place-clusters", (event: MapMouseEvent) => { void focusCluster("places", event); });
         map.on("click", "focus-clusters", (event: MapMouseEvent) => { void focusCluster("focus-places", event); });
-        for (const layer of ["places-point", "midblock-ticks", "place-clusters", "focus-points", "focus-midblock-ticks", "focus-clusters"]) {
+        for (const layer of ["places-hit", "place-clusters", "focus-hit", "focus-clusters"]) {
           map.on("mouseenter", layer, () => { map.getCanvas().style.cursor = "pointer"; });
           map.on("mouseleave", layer, () => { map.getCanvas().style.cursor = ""; });
         }
@@ -1290,13 +1728,17 @@ function Phase32MapSurface({
         };
         const publishVisibilityEvidence = () => {
           if (!containerRef.current) return;
-          const rendered = map.queryRenderedFeatures({ layers: ["place-clusters", "places-point", "midblock-ticks", "focus-clusters", "focus-points", "focus-midblock-ticks"] });
-          containerRef.current.dataset.renderedRankedFeatures = String(rendered.length);
-          containerRef.current.dataset.loadedRankedFeatures = String(map.querySourceFeatures("places").length + map.querySourceFeatures("focus-places").length);
+          try {
+            const rendered = map.queryRenderedFeatures({ layers: ["place-clusters", "places-point", "midblock-ticks", "focus-clusters", "focus-points", "focus-midblock-ticks"] });
+            containerRef.current.dataset.renderedRankedFeatures = String(rendered.length);
+            containerRef.current.dataset.loadedRankedFeatures = String(map.querySourceFeatures("places").length + map.querySourceFeatures("focus-places").length);
+          } catch {
+            // GeoJSON cluster indexes swap atomically after a lens flip; skip the transient idle sample.
+          }
         };
         map.on("moveend", publishCamera);
         map.on("idle", publishVisibilityEvidence);
-        map.fitBounds(NYC_BOUNDS, { padding: 44, duration: 850 });
+        fitNycInRemainingViewport(map, hudHeightRef.current, 850);
         publishCamera();
         setMapReady(true);
         } catch {
@@ -1304,7 +1746,32 @@ function Phase32MapSurface({
         }
       });
       mapRef.current = map;
-      resizeObserver = new ResizeObserver(() => map.resize());
+      resizeObserver = new ResizeObserver(() => {
+        window.requestAnimationFrame(() => {
+          applyOverlayCamera(map, hudHeightRef.current);
+          const focused = focusGroupRef.current;
+          if (focused && placesGeoRef.current) {
+            const idSet = new Set(focused.ids);
+            const features = placesGeoRef.current.features.filter((feature) => idSet.has(String(feature.properties?.id ?? "")));
+            if (features.length) map.fitBounds(boundsOfPoints(features), { maxZoom: 14, duration: 0 });
+            return;
+          }
+          const command = cameraCommandRef.current;
+          if (command.kind === "fit") {
+            map.fitBounds(NYC_BOUNDS, { duration: 0 });
+            return;
+          }
+          if (command.kind === "selected") {
+            const current = selectedRef.current;
+            if (current && current.longitude !== null && current.latitude !== null) {
+              map.easeTo({ center: [current.longitude!, current.latitude!], zoom: Math.max(map.getZoom(), 12.5), duration: 0 });
+            }
+            return;
+          }
+          const frame = command.borough ? BOROUGH_FRAMES[command.borough] : null;
+          if (frame) map.flyTo({ center: frame.center, zoom: frame.zoom, duration: 0 });
+        });
+      });
       resizeObserver.observe(containerRef.current);
     }).catch(() => setMapError(true));
     return () => {
@@ -1319,11 +1786,14 @@ function Phase32MapSurface({
     const map = mapRef.current;
     if (!map || !mapReady || !placesGeoRef.current) return;
     const eligibleIds = new Set(eligiblePlaceIds);
-    const filtered = placesGeoRef.current.features.filter((feature) =>
-      feature.properties?.placeType === mode
-      && (agreementFilter === "all" || feature.properties?.lensAgreementState === agreementFilter)
-      && eligibleIds.has(String(feature.properties?.id ?? ""))
-    );
+    const emphasizedIds = new Set(emphasizedPlaceIds);
+    const filtered = placesGeoRef.current.features
+      .filter((feature) =>
+        feature.properties?.placeType === mode
+        && (agreementFilter === "all" || feature.properties?.lensAgreementState === agreementFilter)
+        && eligibleIds.has(String(feature.properties?.id ?? ""))
+      )
+      .map((feature) => ({ ...feature, properties: { ...feature.properties, emphasized: emphasizedIds.has(String(feature.properties?.id ?? "")) } }));
     const placesSource = map.getSource("places") as GeoJSONSource;
     const focusSource = map.getSource("focus-places") as GeoJSONSource;
     const contextSource = map.getSource("context-places") as GeoJSONSource;
@@ -1340,28 +1810,44 @@ function Phase32MapSurface({
     map.setLayoutProperty("place-clusters", "visibility", cityVisible);
     map.setLayoutProperty("cluster-count", "visibility", cityVisible);
     map.setLayoutProperty("places-point", "visibility", focusing || mode !== "intersection_node" ? "none" : "visible");
+    map.setLayoutProperty("places-core", "visibility", focusing || mode !== "intersection_node" ? "none" : "visible");
+    map.setLayoutProperty("places-hit", "visibility", focusing ? "none" : "visible");
     map.setLayoutProperty("midblock-ticks", "visibility", focusing || mode !== "midblock_segment" ? "none" : "visible");
     map.setLayoutProperty("focus-cluster-halo", "visibility", focusVisible);
     map.setLayoutProperty("focus-clusters", "visibility", focusVisible);
     map.setLayoutProperty("focus-cluster-count", "visibility", focusVisible);
     map.setLayoutProperty("focus-points", "visibility", focusing && mode === "intersection_node" ? "visible" : "none");
     map.setLayoutProperty("focus-midblock-ticks", "visibility", focusing && mode === "midblock_segment" ? "visible" : "none");
+    map.setLayoutProperty("focus-hit", "visibility", focusing ? "visible" : "none");
     map.setLayoutProperty("context-points", "visibility", focusing ? "visible" : "none");
     const lensFill = lens === "injury" ? "#d98b28" : "#c94a37";
     const lensDark = lens === "injury" ? "#7a4308" : "#77271d";
-    map.setPaintProperty("places-point", "circle-color-transition", { duration: 380, delay: 0 });
-    map.setPaintProperty("places-point", "circle-radius-transition", { duration: 380, delay: 0 });
+    const transitionDuration = window.matchMedia("(prefers-reduced-motion: reduce)").matches ? 0 : 380;
+    map.setPaintProperty("places-point", "circle-color-transition", { duration: transitionDuration, delay: 0 });
+    map.setPaintProperty("places-point", "circle-opacity-transition", { duration: transitionDuration, delay: 0 });
+    map.setPaintProperty("place-clusters", "circle-color-transition", { duration: transitionDuration, delay: 0 });
+    map.setPaintProperty("place-clusters", "circle-opacity-transition", { duration: transitionDuration, delay: 0 });
     map.setPaintProperty("places-point", "circle-color", lensFill);
     map.setPaintProperty("places-point", "circle-radius", NEIGHBORHOOD_POINT_RADIUS);
-    map.setPaintProperty("places-point", "circle-opacity", NEIGHBORHOOD_POINT_OPACITY);
+    map.setPaintProperty("places-point", "circle-opacity", ["case", ["boolean", ["feature-state", "hover"], false], 1, ["case", ["==", ["get", "emphasized"], true], 0.98, 0.22]]);
+    map.setPaintProperty("places-point", "circle-blur", ["case", ["boolean", ["feature-state", "hover"], false], 0.03, 0.18]);
+    map.setPaintProperty("places-core", "circle-opacity-transition", { duration: transitionDuration, delay: 0 });
+    map.setPaintProperty("places-core", "circle-opacity", ["case", ["boolean", ["feature-state", "hover"], false], 1, ["case", ["==", ["get", "emphasized"], true], 0.94, 0.18]]);
     map.setPaintProperty("focus-points", "circle-color", lensFill);
+    map.setPaintProperty("focus-points", "circle-opacity", ["case", ["boolean", ["feature-state", "hover"], false], 1, ["case", ["==", ["get", "emphasized"], true], 1, 0.28]]);
     map.setPaintProperty("place-clusters", "circle-color", lensFill);
+    map.setPaintProperty("place-clusters", "circle-opacity", ["case", [">", ["coalesce", ["get", "lamp_count"], 0], 0], 0.96, 0.34]);
+    map.setPaintProperty("cluster-count", "text-opacity", ["case", [">", ["coalesce", ["get", "lamp_count"], 0], 0], 1, 0.48]);
     map.setPaintProperty("cluster-count", "text-halo-color", lensDark);
     map.setPaintProperty("focus-clusters", "circle-color", lensFill);
+    map.setPaintProperty("focus-clusters", "circle-opacity", ["case", [">", ["coalesce", ["get", "lamp_count"], 0], 0], 0.98, 0.4]);
     map.setPaintProperty("focus-clusters", "circle-stroke-color", "#fff3d6");
     map.setPaintProperty("focus-cluster-count", "text-halo-color", lensDark);
+    map.setPaintProperty("selected-ring", "circle-color", lensFill);
     map.setPaintProperty("midblock-ticks", "text-color", lensFill);
     map.setPaintProperty("focus-midblock-ticks", "text-color", lensFill);
+    map.setPaintProperty("midblock-ticks", "text-opacity", ["case", ["boolean", ["feature-state", "hover"], false], 1, ["interpolate", ["linear"], ["zoom"], 11, 0.9, 14, 0.45]]);
+    map.setPaintProperty("focus-midblock-ticks", "text-opacity", ["case", ["boolean", ["feature-state", "hover"], false], 1, 0.82]);
     map.setLayoutProperty("midblock-ticks", "text-size", ["interpolate", ["linear"], ["zoom"], 9, 12, 12, 14, 16, 18]);
     map.setLayoutProperty("possible-points", "visibility", showPossible ? "visible" : "none");
     map.setLayoutProperty("unresolved-points", "visibility", showUnresolved ? "visible" : "none");
@@ -1369,7 +1855,13 @@ function Phase32MapSurface({
       containerRef.current.dataset.focusCount = focusing ? String(focused.length) : "0";
       containerRef.current.dataset.eligibleRankedFeatures = String(filtered.length);
     }
-  }, [agreementFilter, eligiblePlaceIds, focusGroup, lens, mapReady, mode, showPossible, showUnresolved]);
+  }, [agreementFilter, eligiblePlaceIds, emphasizedPlaceIds, focusGroup, lens, mapReady, mode, showPossible, showUnresolved]);
+
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !mapReady || !map.getLayer("ortho")) return;
+    map.setLayoutProperty("ortho", "visibility", showOldPhoto ? "visible" : "none");
+  }, [mapReady, showOldPhoto]);
 
   useEffect(() => {
     const map = mapRef.current;
@@ -1377,17 +1869,9 @@ function Phase32MapSurface({
     const idSet = new Set(focusGroup.ids);
     const features = placesGeoRef.current.features.filter((feature) => idSet.has(String(feature.properties?.id ?? "")));
     if (!features.length) return;
-    map.fitBounds(boundsOfPoints(features), { padding: 72, maxZoom: 14, duration: 700 });
-  }, [focusGroup, mapReady]);
-
-  useEffect(() => {
-    const map = mapRef.current;
-    if (!map || !mapReady || !filtersActive || focusGroup || !placesGeoRef.current) return;
-    const idSet = new Set(eligiblePlaceIds);
-    const features = placesGeoRef.current.features.filter((feature) => idSet.has(String(feature.properties?.id ?? "")));
-    if (!features.length) return;
-    map.fitBounds(boundsOfPoints(features), { padding: 72, maxZoom: 14, duration: 650 });
-  }, [eligiblePlaceIds, filtersActive, focusGroup, mapReady]);
+    applyOverlayCamera(map, hudHeight);
+    map.fitBounds(boundsOfPoints(features), { maxZoom: 14, duration: 700 });
+  }, [focusGroup, hudHeight, mapReady]);
 
   useEffect(() => {
     const map = mapRef.current;
@@ -1409,28 +1893,30 @@ function Phase32MapSurface({
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !mapReady) return;
+    applyOverlayCamera(map, hudHeight);
     if (cameraCommand.kind === "fit") {
-      map.fitBounds(NYC_BOUNDS, { padding: 44, duration: 700 });
+      map.fitBounds(NYC_BOUNDS, { duration: 700 });
       return;
     }
     if (cameraCommand.kind === "selected") {
-      if (selected && selected.longitude !== null && selected.latitude !== null) map.easeTo({ center: [selected.longitude, selected.latitude], zoom: Math.max(map.getZoom(), 12.5), padding: { top: 54, bottom: 54, left: 54, right: 110 }, duration: 650 });
+      if (selected && selected.longitude !== null && selected.latitude !== null) map.easeTo({ center: [selected.longitude, selected.latitude], zoom: Math.max(map.getZoom(), 12.5), duration: 650 });
       return;
     }
     const frame = cameraCommand.borough ? BOROUGH_FRAMES[cameraCommand.borough] : null;
     if (frame) map.flyTo({ center: frame.center, zoom: frame.zoom, duration: 700 });
-  }, [cameraCommand, mapReady, selected]);
+  }, [cameraCommand, hudHeight, mapReady, selected]);
 
   return (
     <div className="map-wrap">
       <div ref={containerRef} className={`map-canvas lens-${lens}`} data-camera-policy="five-borough-fit" data-ranked-visibility="clusters-through-z10-then-dots" data-c6-visual="quilt-fallback-declutter-lens-sync" data-lens-color={lens === "injury" ? "gold" : "brick"} data-focus-count={focusGroup?.ids.length ?? 0} role="application" aria-label="Harm Lens map of analytical place objects" />
       {!mapReady && !mapError && <div className="map-loading"><span />Preparing governed map objects…</div>}
       {mapError && <div className="map-error"><AlertTriangle size={18} />The governed map layers could not be loaded. Place evidence remains available in the list and inspector.</div>}
-      <div className="imagery-badge"><MapPinned size={14} /><div><strong>Old photo ({data.meta.imagery.year}) — not today</strong><span>NYC OTI · {data.meta.imagery.license}</span></div></div>
+      <div className="imagery-badge"><MapPinned size={14} /><div>{showOldPhoto ? <><strong>Old photo ({data.meta.imagery.year}) — not today</strong><span>NYC OTI · {data.meta.imagery.license}</span></> : <><strong>Night streets</strong><span>Old photo ({data.meta.imagery.year}) is off</span></>}</div></div>
       <div className={`map-legend lens-${lens}`} data-testid="plain-map-legend">
-        <span><i className="legend-pile">12</i><b>Pile</b></span>
+        <span><i className="legend-pile" aria-hidden="true" /><b>Stacked places</b></span>
         <span><i className={`dot ${lens}`} /><b>One place</b></span>
         <span><i className="dot selected" /><b>You picked this</b></span>
+        <small>A number is how many {mode === "intersection_node" ? "corners" : "places"} are stacked — not crash records.</small>
         {(showPossible || showUnresolved) && <small>Hollow extra marks are not on the main list.</small>}
       </div>
     </div>
@@ -1441,6 +1927,8 @@ export default function Home() {
   const [data, setData] = useState<AppData | null>(null);
   const [placeLabels, setPlaceLabels] = useState<PlaceLabelIndex | null>(null);
   const [p25, setP25] = useState<P25Projection | null>(null);
+  const [crashWhen, setCrashWhen] = useState<CrashWhenIndex | null>(null);
+  const [crashWho, setCrashWho] = useState<CrashWhoIndex | null>(null);
   const [situateIndex, setSituateIndex] = useState<SituateIndex | null>(null);
   const [wave2SituatePlaces, setWave2SituatePlaces] = useState<Record<string, Wave2SituatePlace>>({});
   const [situateError, setSituateError] = useState(false);
@@ -1457,18 +1945,27 @@ export default function Home() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [focusGroup, setFocusGroup] = useState<FocusGroup | null>(null);
   const [tab, setTab] = useState<InspectorTab>("why");
+  const [crashYearFocus, setCrashYearFocus] = useState<string | null>(null);
   const [showPossible, setShowPossible] = useState(false);
   const [showUnresolved, setShowUnresolved] = useState(false);
+  const [showOldPhoto, setShowOldPhoto] = useState(false);
   const [agreementFilter, setAgreementFilter] = useState<AgreementFilter>("all");
   const [cameraCommand, setCameraCommand] = useState<CameraCommand>({ kind: "fit", nonce: 0 });
   const [mapLookBorough, setMapLookBorough] = useState<string | null>(null);
+  const [mapHudExpanded, setMapHudExpanded] = useState(false);
+  const [mapHudHeight, setMapHudHeight] = useState(56);
+  const mapHudRef = useRef<HTMLDivElement>(null);
   const [previewId, setPreviewId] = useState<string | null>(null);
   const [compareMode, setCompareMode] = useState(false);
   const [compareIds, setCompareIds] = useState<string[]>([]);
   const [compareMethodLock, setCompareMethodLock] = useState<CompareMethodLock | null>(null);
   const [compareOpen, setCompareOpen] = useState(false);
   const [diffOnly, setDiffOnly] = useState(false);
+  const [packetSubjectId, setPacketSubjectId] = useState<string | null>(null);
   const [savedIds, setSavedIds] = useState<string[]>([]);
+  const [shareReady, setShareReady] = useState(false);
+  const [shareRefuse, setShareRefuse] = useState<string | null>(null);
+  const [shareCopied, setShareCopied] = useState(false);
   const [methodOpen, setMethodOpen] = useState(false);
   const [activeChipId, setActiveChipId] = useState<string | null>(null);
   const [situateYesPlaceIds, setSituateYesPlaceIds] = useState<string[] | null>(null);
@@ -1476,25 +1973,66 @@ export default function Home() {
   const [situateYesError, setSituateYesError] = useState(false);
   const [askHonesty, setAskHonesty] = useState<AskLegendHonesty | null>(null);
   const [briefGeneratedAt, setBriefGeneratedAt] = useState<string | null>(null);
+  const [legendTask, setLegendTask] = useState("");
+  const [legendTrace, setLegendTrace] = useState<{ ok: boolean; text: string; tools: string[] } | null>(null);
+  const [legendDeliverable, setLegendDeliverable] = useState<{
+    kind: string;
+    walkCaption?: string;
+    challenge?: { supports: string; weakens: string; unknowns: string; strongest: string };
+    missing?: { items: string[]; never: string };
+    hours?: { buckets: { hour: number; count: number }[]; unknown: number; total: number; prohibition: string };
+  } | null>(null);
+  const [focusLegendTask, setFocusLegendTask] = useState(false);
+  const legendTaskRef = useRef<HTMLInputElement>(null);
+  const legendTourTimers = useRef<number[]>([]);
+
+  useEffect(() => {
+    setMapHudExpanded(window.sessionStorage.getItem("hl-map-hud:expanded") === "true");
+  }, []);
+
+  useEffect(() => {
+    window.sessionStorage.setItem("hl-map-hud:expanded", String(mapHudExpanded));
+  }, [mapHudExpanded]);
+
+  useEffect(() => {
+    setCrashYearFocus(null);
+  }, [windowKey, roadUser]);
+
+  useEffect(() => {
+    const element = mapHudRef.current;
+    if (!element) return;
+    const publishHeight = () => setMapHudHeight(Math.ceil(element.getBoundingClientRect().height));
+    publishHeight();
+    const observer = new ResizeObserver(publishHeight);
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, [mapHudExpanded, screen]);
 
   useEffect(() => {
     Promise.all([
       loadCompressedJson<AppData>("/data/app-data.json.gz"),
       loadCompressedJson<PlaceLabelIndex>("/data/place-labels.json.gz"),
       loadCompressedJson<P25Projection>("/data/p2-5-ui-objects-v1.json.gz"),
+      loadCompressedJson<CrashWhenIndex>("/data/crash-when-v1.json.gz"),
+      loadCompressedJson<CrashWhoIndex>("/data/crash-row-who-v1.json.gz"),
+      loadCompressedJson<CorridorOverlay>("/data/corridor-lion26b-v0-eastern-pkwy.json.gz"),
     ])
-      .then(([appData, labels, released]) => {
+      .then(([appData, labels, released, whenIndex, whoIndex, corridorOverlay]) => {
         if (released.meta.objectVersion !== "HL-P2.5-OBJECT-RELEASE-v1" || released.meta.basePlaceCount !== appData.places.length) throw new Error("P2.5 projection binding mismatch");
+        if (whenIndex.meta.projectionVersion !== "HL-CRASH-WHEN-v1" || whenIndex.meta.p25ProjectionSha256 !== P25_PROJECTION_SHA256 || whenIndex.meta.sourceSnapshotSha256 !== CRASH_SNAPSHOT_SHA256) throw new Error("Crash-when projection binding mismatch");
+        if (whoIndex.meta.projectionVersion !== "HL-CRASH-ROW-WHO-v1" || whoIndex.meta.p25ProjectionSha256 !== P25_PROJECTION_SHA256 || whoIndex.meta.sourceSnapshotSha256 !== CRASH_SNAPSHOT_SHA256) throw new Error("Crash-row WHO projection binding mismatch");
         setData(appData);
         setPlaceLabels(labels);
-        setP25(released);
+        setP25(mergeCorridorOverlay(released, corridorOverlay));
+        setCrashWhen(whenIndex);
+        setCrashWho(whoIndex);
       })
       .catch(() => setLoadError(true));
   }, []);
 
   useEffect(() => {
-    if ((tab !== "situate" && tab !== "packet" && !compareOpen) || situateError) return;
-    const requested = [...new Set([selectedId, ...(compareOpen ? compareIds : [])].filter((id): id is string => Boolean(id)))];
+    if ((tab !== "situate" && tab !== "packet" && screen !== "packet" && !compareOpen) || situateError) return;
+    const requested = [...new Set([selectedId, packetSubjectId, ...(compareOpen || screen === "packet" ? compareIds : [])].filter((id): id is string => Boolean(id)))];
     const missing = requested.filter((id) => !situateIndex?.places[id]);
     if (!missing.length) return;
     loadSituatePlaces(missing)
@@ -1511,17 +2049,20 @@ export default function Home() {
         places: { ...(current?.places ?? {}), ...places },
       })))
       .catch(() => setSituateError(true));
-  }, [compareIds, compareOpen, selectedId, situateError, situateIndex, tab]);
+  }, [compareIds, compareOpen, packetSubjectId, screen, selectedId, situateError, situateIndex, tab]);
 
   useEffect(() => {
-    if (!selectedId || (tab !== "situate" && tab !== "packet") || wave2SituateError || wave2SituatePlaces[selectedId]) return;
-    loadWave2SituatePlaces([selectedId])
+    const situatePlaceId = packetSubjectId ?? selectedId;
+    if (!situatePlaceId || (tab !== "situate" && tab !== "packet" && screen !== "packet") || wave2SituateError || wave2SituatePlaces[situatePlaceId]) return;
+    loadWave2SituatePlaces([situatePlaceId])
       .then((places) => setWave2SituatePlaces((current) => ({ ...current, ...places })))
       .catch(() => setWave2SituateError(true));
-  }, [selectedId, tab, wave2SituateError, wave2SituatePlaces]);
+  }, [packetSubjectId, screen, selectedId, tab, wave2SituateError, wave2SituatePlaces]);
 
   const placeById = useMemo(() => new Map(data?.places.map((place) => [place.id, place]) ?? []), [data]);
   const selected = selectedId ? placeById.get(selectedId) ?? null : null;
+  const packetSubjectResolvedId = resolvePacketSubject({ packetSubjectId, compareIds, selectedId });
+  const packetSubject = packetSubjectResolvedId ? placeById.get(packetSubjectResolvedId) ?? null : selected;
 
   const askLegendUniverse = useMemo(() => {
     if (!data || !placeLabels) return [];
@@ -1540,6 +2081,13 @@ export default function Home() {
     return new Map(precise.map((match, index) => [match.id, index]));
   }, [askLegendUniverse, query]);
 
+  const searchNearMissTitles = useMemo(() => {
+    if (!query.trim() || searchMatchRank?.size) return [];
+    return searchNearMisses(query, askLegendUniverse, { limit: 3 })
+      .map((match) => askLegendUniverse.find((place) => place.id === match.id)?.title)
+      .filter((title): title is string => Boolean(title));
+  }, [askLegendUniverse, query, searchMatchRank]);
+
   const eligiblePlaces = useMemo(() => {
     if (!data || !p25) return [];
     const situateYes = situateYesPlaceIds ? new Set(situateYesPlaceIds) : null;
@@ -1548,11 +2096,11 @@ export default function Home() {
     return data.places
       .filter((place) => place.placeType === mode)
       .filter((place) => baseline ? agreementFilter === "all" || place.lensAgreementState === agreementFilter : true)
-      .filter((place) => baseline || activeP25Count(p25, place.id, windowKey, roadUser, lens) > 0)
+      .filter((place) => activeP25Count(p25, place.id, windowKey, roadUser, lens) > 0 || place.id === selectedId)
       .filter((place) => !corridorPlaces || corridorPlaces.has(place.id))
       .filter((place) => !situateYes || situateYes.has(place.id))
       .filter((place) => !searchMatchRank || searchMatchRank.has(place.id));
-  }, [agreementFilter, corridorId, data, lens, mode, p25, roadUser, searchMatchRank, situateYesPlaceIds, windowKey]);
+  }, [agreementFilter, corridorId, data, lens, mode, p25, roadUser, searchMatchRank, selectedId, situateYesPlaceIds, windowKey]);
 
   const mapEligiblePlaceIds = useMemo(() => eligiblePlaces.map((place) => place.id), [eligiblePlaces]);
   const mapEligiblePlaceIdSet = useMemo(() => new Set(mapEligiblePlaceIds), [mapEligiblePlaceIds]);
@@ -1561,37 +2109,47 @@ export default function Home() {
     if (!query.trim() || eligiblePlaces.length !== 1 || selectedId === eligiblePlaces[0].id) return;
     const timer = window.setTimeout(() => {
       setSelectedId(eligiblePlaces[0].id);
+      if (!compareMode) setPacketSubjectId(eligiblePlaces[0].id);
       setCameraCommand((current) => ({ kind: "selected", nonce: current.nonce + 1 }));
     }, 0);
     return () => window.clearTimeout(timer);
-  }, [eligiblePlaces, query, selectedId]);
+  }, [compareMode, eligiblePlaces, query, selectedId]);
 
   const visiblePlaces = useMemo(() => {
     if (!data || !p25) return [];
     const count = (place: Place) => activeP25Count(p25, place.id, windowKey, roadUser, lens);
     const baseline = roadUser === "everyone" && windowKey === "36m";
-    if (!searchMatchRank) {
-      const ranked = [...eligiblePlaces]
-        .sort((a, b) => baseline
-          ? (lens === "injury" ? a.injuryRank - b.injuryRank : a.fatalRank - b.fatalRank) || a.placeId - b.placeId
-          : count(b) - count(a) || a.placeId - b.placeId);
-      if (situateYesPlaceIds) return ranked.slice(0, 80);
-      const top = ranked.slice(0, 32);
-      const selectedPlace = selectedId ? eligiblePlaces.find((place) => place.id === selectedId) : null;
-      if (selectedPlace && !top.some((place) => place.id === selectedPlace.id)) {
-        return [selectedPlace, ...top];
-      }
-      return top;
+    const byActiveLens = (left: Place, right: Place) => baseline
+      ? (lens === "injury" ? left.injuryRank - right.injuryRank : left.fatalRank - right.fatalRank) || left.placeId - right.placeId
+      : count(right) - count(left) || left.placeId - right.placeId;
+    if (searchMatchRank) {
+      return [...eligiblePlaces]
+        .sort((a, b) => {
+          const rankA = searchMatchRank.get(a.id) ?? Number.MAX_SAFE_INTEGER;
+          const rankB = searchMatchRank.get(b.id) ?? Number.MAX_SAFE_INTEGER;
+          if (rankA !== rankB) return rankA - rankB;
+          return count(b) - count(a) || a.placeId - b.placeId;
+        })
+        .slice(0, 80);
     }
-    return [...eligiblePlaces]
-      .sort((a, b) => {
-        const rankA = searchMatchRank.get(a.id) ?? Number.MAX_SAFE_INTEGER;
-        const rankB = searchMatchRank.get(b.id) ?? Number.MAX_SAFE_INTEGER;
-        if (rankA !== rankB) return rankA - rankB;
-        return count(b) - count(a) || a.placeId - b.placeId;
-      })
-      .slice(0, 80);
-  }, [data, eligiblePlaces, lens, p25, roadUser, searchMatchRank, selectedId, situateYesPlaceIds, windowKey]);
+    if (focusGroup) {
+      const idSet = new Set(focusGroup.ids);
+      return data.places.filter((place) => place.placeType === mode && idSet.has(place.id)).sort(byActiveLens);
+    }
+    const ranked = [...eligiblePlaces]
+      .sort((a, b) => baseline
+        ? (lens === "injury" ? a.injuryRank - b.injuryRank : a.fatalRank - b.fatalRank) || a.placeId - b.placeId
+        : count(b) - count(a) || a.placeId - b.placeId);
+    if (situateYesPlaceIds) return ranked.slice(0, 80);
+    const top = ranked.slice(0, 32);
+    const selectedPlace = selectedId ? eligiblePlaces.find((place) => place.id === selectedId) : null;
+    if (selectedPlace && !top.some((place) => place.id === selectedPlace.id)) {
+      return [...top, selectedPlace];
+    }
+    return top;
+  }, [data, eligiblePlaces, focusGroup, lens, mode, p25, roadUser, searchMatchRank, selectedId, situateYesPlaceIds, windowKey]);
+
+  const emphasizedMapPlaceIds = useMemo(() => visiblePlaces.map((place) => place.id), [visiblePlaces]);
 
   const issueCameraCommand = (kind: CameraCommand["kind"], borough?: string) => {
     setCameraCommand((current) => ({ kind, borough, nonce: current.nonce + 1 }));
@@ -1605,6 +2163,7 @@ export default function Home() {
   const selectPlace = (id: string) => {
     setSelectedId(id);
     setTab("why");
+    setCrashYearFocus(null);
     issueCameraCommand("selected");
     if (compareMode) {
       setCompareIds((current) => {
@@ -1612,6 +2171,8 @@ export default function Home() {
         if (current.length < 2) return [...current, id];
         return [current[0], id];
       });
+    } else {
+      setPacketSubjectId(id);
     }
   };
 
@@ -1621,6 +2182,14 @@ export default function Home() {
     setMapLookBorough(null);
     setQuery("");
     issueCameraCommand("fit");
+  };
+
+  const openTheMap = () => {
+    setFocusGroup(null);
+    setQuery("");
+    setMapLookBorough(null);
+    issueCameraCommand("fit");
+    setScreen("explore");
   };
 
   const lookAtBorough = (borough: string) => {
@@ -1659,10 +2228,9 @@ export default function Home() {
   const searchFromMap = (value: string) => {
     setSelectedId(null);
     setFocusGroup(null);
-    setMapLookBorough(null);
     setQuery(value);
     if (!value.trim()) return;
-    const matches = searchPlaces(askLegendUniverse, value);
+    const matches = searchPlaces(value, askLegendUniverse);
     const precise = matches[0] && matches[0].score >= 94
       ? matches.filter((match) => match.score >= 90)
       : matches;
@@ -1705,7 +2273,6 @@ export default function Home() {
     setSituateYesPlaceIds(null);
     setAgreementFilter("all");
     setFocusGroup(null);
-    issueCameraCommand("fit");
     setActiveChipId(null);
     setAskHonesty(null);
     setSituateYesError(false);
@@ -1784,41 +2351,258 @@ export default function Home() {
     setCompareMode(true);
     setCompareOpen(false);
     setCompareIds([selected.id]);
+    setPacketSubjectId(selected.id);
     setCompareMethodLock({ roadUser, window: windowKey });
     setScreen("explore");
   };
 
   const toggleSaved = (id: string) => {
-    setSavedIds((current) => current.includes(id) ? current.filter((item) => item !== id) : [...current, id]);
+    setSavedIds((current) => {
+      const next = current.includes(id) ? current.filter((item) => item !== id) : [...current, id];
+      if (!next.length && typeof window !== "undefined") window.localStorage.removeItem(SHARE_STORAGE_KEY);
+      return next;
+    });
   };
+
+  const applySharePayload = (payload: {
+    lens: Lens;
+    roadUser: RoadUser;
+    windowKey: WindowKey;
+    mode: PlaceMode;
+    placeIds: string[];
+    packetSubjectId: string;
+    corridorId?: string;
+  }) => {
+    setLens(payload.lens);
+    setRoadUser(payload.roadUser);
+    setWindowKey(payload.windowKey);
+    setMode(payload.mode);
+    setCorridorId(payload.corridorId ?? "");
+    setSavedIds(payload.placeIds);
+    setPacketSubjectId(payload.packetSubjectId);
+    setSelectedId(payload.packetSubjectId);
+    setAgreementFilter("all");
+    setQuery("");
+    setFocusGroup(null);
+    setCompareMode(false);
+    setCompareIds([]);
+    setCompareMethodLock(null);
+    setCompareOpen(false);
+    setScreen("explore");
+  };
+
+  const currentSharePayload = () => {
+    if (!data || !p25 || !savedIds.length) return null;
+    const subjectId = packetSubjectId || savedIds[0];
+    return buildSharePayload({
+      lens,
+      roadUser,
+      windowKey,
+      mode,
+      placeIds: savedIds,
+      packetSubjectId: subjectId,
+      corridorId,
+      freeze: shareFreeze(data, p25),
+    });
+  };
+
+  const copyShareLink = async () => {
+    const payload = currentSharePayload();
+    if (!payload || !data || !p25) return;
+    const checked = validateSharePayload(payload, shareUniverse(data, p25));
+    if (!checked.ok) {
+      setShareRefuse(checked.reason);
+      return;
+    }
+    const href = shareHref(window.location.origin, checked.payload);
+    try {
+      await navigator.clipboard.writeText(href);
+    } catch {
+      window.prompt("Copy investigation set URL", href);
+    }
+    window.history.replaceState(null, "", href);
+    setShareCopied(true);
+    window.setTimeout(() => setShareCopied(false), 2200);
+  };
+
+  const exportShareJson = () => {
+    const payload = currentSharePayload();
+    if (!payload || !data || !p25) return;
+    const checked = validateSharePayload(payload, shareUniverse(data, p25));
+    if (!checked.ok) {
+      setShareRefuse(checked.reason);
+      return;
+    }
+    const body = {
+      ...checked.payload,
+      claimLimit: SHARE_SET_COPY,
+      notOfficialPriority: true,
+    };
+    const blob = new Blob([JSON.stringify(body, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = "harm-lens-investigation-set.json";
+    anchor.click();
+    URL.revokeObjectURL(url);
+  };
+
+  useEffect(() => {
+    if (!data || !p25 || shareReady) return;
+    const universe = shareUniverse(data, p25);
+    const fromUrl = parseAndValidateShareHref(window.location.href, universe);
+    if (!fromUrl.ok) {
+      setShareRefuse(fromUrl.reason);
+      window.history.replaceState(null, "", stripShareFromHref(window.location.href));
+      setShareReady(true);
+      return;
+    }
+    if (fromUrl.payload) {
+      applySharePayload(fromUrl.payload);
+      setShareReady(true);
+      return;
+    }
+    try {
+      const storedRaw = window.localStorage.getItem(SHARE_STORAGE_KEY);
+      if (storedRaw) {
+        const stored = JSON.parse(storedRaw);
+        const checked = validateSharePayload(stored, universe);
+        if (checked.ok) applySharePayload(checked.payload);
+      }
+    } catch {
+      window.localStorage.removeItem(SHARE_STORAGE_KEY);
+    }
+    setShareReady(true);
+  }, [data, p25, shareReady]);
+
+  useEffect(() => {
+    if (!shareReady || !data || !p25 || !savedIds.length) return;
+    const payload = currentSharePayload();
+    if (!payload) return;
+    const checked = validateSharePayload(payload, shareUniverse(data, p25));
+    if (checked.ok) window.localStorage.setItem(SHARE_STORAGE_KEY, JSON.stringify(checked.payload));
+  }, [shareReady, savedIds, lens, roadUser, windowKey, mode, corridorId, packetSubjectId, data, p25]);
+
+  useEffect(() => {
+    const onHash = () => {
+      if (!data || !p25) return;
+      const fromUrl = parseAndValidateShareHref(window.location.href, shareUniverse(data, p25));
+      if (!fromUrl.ok) {
+        setShareRefuse(fromUrl.reason);
+        window.history.replaceState(null, "", stripShareFromHref(window.location.href));
+        return;
+      }
+      if (fromUrl.payload) applySharePayload(fromUrl.payload);
+    };
+    window.addEventListener("hashchange", onHash);
+    return () => window.removeEventListener("hashchange", onHash);
+  }, [data, p25]);
+
+  useEffect(() => {
+    if (!focusLegendTask || screen === "overview") return;
+    legendTaskRef.current?.focus();
+    setFocusLegendTask(false);
+  }, [focusLegendTask, screen]);
+
+  useEffect(() => () => {
+    legendTourTimers.current.forEach((handle) => window.clearTimeout(handle));
+  }, []);
+
+  useEffect(() => {
+    const onSlash = (event: KeyboardEvent) => {
+      if (event.key !== "/" || event.metaKey || event.ctrlKey || event.altKey) return;
+      const target = event.target as HTMLElement | null;
+      if (target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.tagName === "SELECT" || target.isContentEditable)) return;
+      event.preventDefault();
+      if (screen === "overview") {
+        openTheMap();
+        setFocusLegendTask(true);
+        return;
+      }
+      legendTaskRef.current?.focus();
+    };
+    window.addEventListener("keydown", onSlash);
+    return () => window.removeEventListener("keydown", onSlash);
+  }, [screen]);
 
   useEffect(() => {
     const closeTopLayer = (event: KeyboardEvent) => {
       if (event.key !== "Escape") return;
+      if (document.activeElement === legendTaskRef.current) {
+        legendTaskRef.current?.blur();
+        event.preventDefault();
+        return;
+      }
       if (methodOpen) setMethodOpen(false);
       else if (compareOpen) setCompareOpen(false);
       else if (compareMode) { setCompareMode(false); setCompareIds([]); }
+      else if (selectedId) {
+        setSelectedId(null);
+        if (query.trim()) setQuery("");
+        if (!focusGroup) setCameraCommand((current) => ({ kind: mapLookBorough ? "borough" : "fit", borough: mapLookBorough ?? undefined, nonce: current.nonce + 1 }));
+      } else if (focusGroup) {
+        setFocusGroup(null);
+        setCameraCommand((current) => ({ kind: mapLookBorough ? "borough" : "fit", borough: mapLookBorough ?? undefined, nonce: current.nonce + 1 }));
+      } else if (mapLookBorough) {
+        setMapLookBorough(null);
+        setCameraCommand((current) => ({ kind: "fit", nonce: current.nonce + 1 }));
+      } else if (query.trim()) {
+        setQuery("");
+        setCameraCommand((current) => ({ kind: "fit", nonce: current.nonce + 1 }));
+      }
     };
     window.addEventListener("keydown", closeTopLayer);
     return () => window.removeEventListener("keydown", closeTopLayer);
-  }, [compareMode, compareOpen, methodOpen]);
+  }, [compareMode, compareOpen, focusGroup, mapLookBorough, methodOpen, query, selectedId]);
+
+  useEffect(() => {
+    if (screen === "packet" && !selectedId && !packetSubjectId) setScreen("explore");
+  }, [packetSubjectId, screen, selectedId]);
 
   if (loadError) {
     return <main className="fatal-error"><AlertTriangle /><h1>Phase 2 objects could not be loaded.</h1><p>No alternate or live data was substituted.</p></main>;
   }
-  if (!data || !placeLabels || !p25) {
+  if (!data || !placeLabels || !p25 || !crashWhen || !crashWho) {
     return <main className="boot-screen"><div className="brand-mark" /><span>Loading frozen Phase 2 objects…</span></main>;
   }
 
-  const packet = selected ? data.samplePackets[selected.id] : undefined;
+  const packet = packetSubject ? data.samplePackets[packetSubject.id] : undefined;
   const selectedP25 = selected ? p25.places[selected.id] : undefined;
+  const packetP25 = packetSubject ? p25.places[packetSubject.id] : undefined;
   const selectedInjuryCount = selected ? activeP25Count(p25, selected.id, windowKey, roadUser, "injury") : 0;
   const selectedFatalCount = selected ? activeP25Count(p25, selected.id, windowKey, roadUser, "fatal") : 0;
   const selectedInjuryIds = selected ? activeP25Ids(p25, selected.id, windowKey, roadUser, "injury") : [];
   const selectedFatalIds = selected ? activeP25Ids(p25, selected.id, windowKey, roadUser, "fatal") : [];
+  const selectedSupportingIds = [...new Set([...selectedInjuryIds, ...selectedFatalIds])];
+  const packetInjuryCount = packetSubject ? activeP25Count(p25, packetSubject.id, windowKey, roadUser, "injury") : 0;
+  const packetFatalCount = packetSubject ? activeP25Count(p25, packetSubject.id, windowKey, roadUser, "fatal") : 0;
+  const packetInjuryIds = packetSubject ? activeP25Ids(p25, packetSubject.id, windowKey, roadUser, "injury") : [];
+  const packetFatalIds = packetSubject ? activeP25Ids(p25, packetSubject.id, windowKey, roadUser, "fatal") : [];
+  const packetSupportingIds = [...new Set([...packetInjuryIds, ...packetFatalIds])];
+  const selectedCrashDates = [...new Set([...selectedInjuryIds, ...selectedFatalIds])]
+    .map((id) => crashWhen.records[String(id)]?.crashDate)
+    .filter((value): value is string => Boolean(value))
+    .sort();
+  const packetCrashDates = [...new Set([...packetInjuryIds, ...packetFatalIds])]
+    .map((id) => crashWhen.records[String(id)]?.crashDate)
+    .filter((value): value is string => Boolean(value))
+    .sort();
+  const selectedCrashDateSpan = selectedCrashDates.length
+    ? { earliest: selectedCrashDates[0], latest: selectedCrashDates[selectedCrashDates.length - 1] }
+    : null;
+  const packetCrashDateSpan = packetCrashDates.length
+    ? { earliest: packetCrashDates[0], latest: packetCrashDates[packetCrashDates.length - 1] }
+    : null;
+  const selectedYearBuckets = selected ? groupCrashIdsByYear([...selectedInjuryIds, ...selectedFatalIds], crashWhen) : [];
+  const packetYearBuckets = packetSubject ? groupCrashIdsByYear([...packetInjuryIds, ...packetFatalIds], crashWhen) : [];
+  const openCrashYear = (year: string) => {
+    setCrashYearFocus(year);
+    setTab("records");
+  };
   const activeWindow = p25.meta.windows[windowKey];
   const activeRoadUserCopy = p25.meta.roadUserLabels[roadUser];
   const activeCorridor = corridorId ? p25.corridors[corridorId] : undefined;
+  const activeCorridorRollup = activeCorridor ? corridorRollup(activeCorridor, lens) : undefined;
   const activeOverlap = windowKey === "36m" ? p25.meta.overlap36[`${mode}:${lens}`] : undefined;
   const selectedPersistence = selectedP25?.persistence[lens];
   const countFor = (place: Place, selectedLens: Lens = lens) => activeP25Count(p25, place.id, windowKey, roadUser, selectedLens);
@@ -1826,37 +2610,46 @@ export default function Home() {
   const baseSituate = selected ? situateIndex?.places[selected.id] : undefined;
   const wave2Situate = selected ? wave2SituatePlaces[selected.id] : undefined;
   const situate = !baseSituate ? undefined : !wave2Situate ? (wave2SituateError ? baseSituate : undefined) : mergeSituatePlace(baseSituate, wave2Situate);
-  const evidenceBrief = selected && situate && briefGeneratedAt ? composeEvidenceBrief({
+  const packetBaseSituate = packetSubject ? situateIndex?.places[packetSubject.id] : undefined;
+  const packetWave2Situate = packetSubject ? wave2SituatePlaces[packetSubject.id] : undefined;
+  const packetSituate = !packetBaseSituate ? undefined : !packetWave2Situate ? (wave2SituateError ? packetBaseSituate : undefined) : mergeSituatePlace(packetBaseSituate, packetWave2Situate);
+  const evidenceBrief = packetSubject && packetSituate && briefGeneratedAt ? composeEvidenceBrief({
     generatedAtUtc: briefGeneratedAt,
     place: {
-      id: selected.id,
-      title: placeTitle(selected, placeLabels),
-      lionLabel: lionLabel(selected),
-      placeType: selected.placeType,
-      assignmentClass: selected.assignmentClass,
-      injuryCount: selectedInjuryCount,
-      fatalCount: selectedFatalCount,
-      injurySupportingIds: selectedInjuryIds,
-      fatalSupportingIds: selectedFatalIds,
-      equalityPass: selectedInjuryCount === selectedInjuryIds.length && selectedFatalCount === selectedFatalIds.length,
+      id: packetSubject.id,
+      title: placeTitle(packetSubject, placeLabels),
+      lionLabel: lionLabel(packetSubject),
+      placeType: packetSubject.placeType,
+      assignmentClass: packetSubject.assignmentClass,
+      injuryCount: packetInjuryCount,
+      fatalCount: packetFatalCount,
+      injurySupportingIds: packetInjuryIds,
+      fatalSupportingIds: packetFatalIds,
+      equalityPass: packetInjuryCount === packetInjuryIds.length && packetFatalCount === packetFatalIds.length,
       ...(showToll && windowKey === "36m" ? { toll: {
         label: lens === "injury" ? "people recorded injured on those crash records" : "people recorded killed on those crash records",
-        peopleRecordedTotal: selectedP25?.toll36[roadUser]?.[lens] ?? 0,
+        peopleRecordedTotal: packetP25?.toll36[roadUser]?.[lens] ?? 0,
         disclosure: p25.meta.tollDisagreementDisclosure,
       } } : {}),
-      ...(selectedPersistence ? { persistence: {
+      ...(packetP25?.persistence[lens] ? { persistence: {
         version: p25.meta.persistenceVersion,
-        statement: selectedPersistence.positive
+        statement: packetP25.persistence[lens].positive
           ? `Elevated under the Everyone predicate in both the released 36-month and 48-month checks${lens === "fatal" ? "; fatal elevation means at least one fatal crash record" : ""}.`
           : `Not elevated under the Everyone predicate in both released 36-month and 48-month checks${lens === "fatal" ? "; fatal elevation means at least one fatal crash record" : ""}.`,
       } } : {}),
-      ...(activeCorridor && baselineMethod ? { corridor: {
+      ...(activeCorridor && activeCorridorRollup && baselineMethod ? { corridor: {
         corridorId: activeCorridor.corridorId,
-        label: `${activeCorridor.displayName} · ${activeCorridor.boroughName} · component ${activeCorridor.componentOrdinal}`,
-        crashRecordCount: activeCorridor.metrics[lens].count,
-        supportingCollisionIds: activeCorridor.metrics[lens].ids,
+        label: corridorComponentLabel(activeCorridor),
+        crashRecordCount: activeCorridorRollup.count,
+        supportingCollisionIds: activeCorridorRollup.ids,
       } } : {}),
+      windowCounts: [
+        { windowId: "24m", crashRecordCount: activeP25Count(p25, packetSubject.id, "24m", roadUser, lens) },
+        { windowId: "36m", crashRecordCount: activeP25Count(p25, packetSubject.id, "36m", roadUser, lens) },
+        { windowId: "48m", crashRecordCount: activeP25Count(p25, packetSubject.id, "48m", roadUser, lens) },
+      ],
     },
+    supportingCrashDates: packetCrashDates,
     lens,
     method: {
       windowId: activeWindow.id,
@@ -1869,7 +2662,7 @@ export default function Home() {
       objectVersion: p25.meta.objectVersion,
       geographyVersion: placeLabels.meta.geographyVersion,
     },
-    situate,
+    situate: packetSituate,
   }) : null;
   const preview = previewId ? placeById.get(previewId) : null;
   const comparePlaces = compareIds.map((id) => placeById.get(id)).filter((place): place is Place => Boolean(place));
@@ -1884,23 +2677,26 @@ export default function Home() {
     &&
     selected
     && !query.trim()
-    && visiblePlaces[0]?.id === selected.id
+    && !focusGroup
+    && visiblePlaces.some((place) => place.id === selected.id)
     && (lens === "injury" ? selected.injuryRank > 32 : selected.fatalRank > 32)
   );
+  const exploreListKind = query.trim() ? "search" : focusGroup ? "pile" : "city";
+  const stackedPlaceWord = mode === "intersection_node" ? "corners" : "places";
   const mapHasBack = Boolean(selectedId || focusGroup || mapLookBorough || query.trim());
   const mapCoach = selected && mapEligiblePlaceIdSet.has(selected.id)
     ? `You picked ${placeTitle(selected, placeLabels)}. Open it for the crash reports and limits.`
     : focusGroup
       ? `This pile has ${formatNumber(focusGroup.ids.length)} places. Pick a dot, or go Back.`
       : mapLookBorough
-        ? `Looking at ${mapLookBorough}. The list still covers every place in the active filter.`
+        ? `Looking at ${mapLookBorough}. The list is still city closer-look order, not this borough.`
         : query.trim()
           ? eligiblePlaces.length
             ? `${formatNumber(eligiblePlaces.length)} place${eligiblePlaces.length === 1 ? "" : "s"} with that street name in this list.`
             : "No place with that name in this list."
           : !baselineMethod || corridorId || situateYesPlaceIds || agreementFilter !== "all"
             ? `Filter on: map and list show the same ${formatNumber(mapEligiblePlaceIds.length)} places.`
-            : "A number is a pile. Click it to look inside, or zoom in.";
+            : `A number is how many ${stackedPlaceWord} are stacked. Click it to look inside, or zoom in.`;
 
   const downloadPacket = () => {
     if (!packet) return;
@@ -1914,21 +2710,156 @@ export default function Home() {
   };
 
   const prepareEvidenceBrief = () => {
+    const subjectId = resolvePacketSubject({ packetSubjectId, compareIds, selectedId }) ?? selectedId;
+    if (subjectId) setPacketSubjectId(subjectId);
     setBriefGeneratedAt(new Date().toISOString());
     setTab("packet");
     setScreen("packet");
   };
 
   const downloadEvidenceBrief = (format: "html" | "json") => {
-    if (!evidenceBrief) return;
+    if (!evidenceBrief || !packetSubject) return;
     const content = format === "html" ? evidenceBriefHtml(evidenceBrief) : JSON.stringify(evidenceBrief, null, 2);
     const blob = new Blob([content], { type: format === "html" ? "text/html;charset=utf-8" : "application/json" });
     const url = URL.createObjectURL(blob);
     const anchor = document.createElement("a");
     anchor.href = url;
-    anchor.download = `harm-lens-evidence-brief-${selected?.placeType}-${selected?.placeId}.${format}`;
+    anchor.download = `harm-lens-evidence-brief-${packetSubject.placeType}-${packetSubject.placeId}.${format}`;
     anchor.click();
     URL.revokeObjectURL(url);
+  };
+
+  const submitLegendTask = (event: { preventDefault: () => void }) => {
+    event.preventDefault();
+    const text = legendTask.trim();
+    if (!text) return;
+    const result = runPlannerJob(text, {
+      screen,
+      selectedId,
+      packetSubjectId,
+      compareIds,
+      lens,
+      roadUser,
+      windowKey,
+      grain: mode,
+      look: mapLookBorough,
+      pileIds: focusGroup?.ids ?? [],
+      query,
+      crashYearFocus,
+      tab,
+      analysisEnd: data.meta.analysisEnd,
+      sourceStatus: data.meta.sourceStatus,
+    }, {
+      universe: askLegendUniverse,
+      allowedPlaceIds: data.places.map((place) => place.id),
+      injuryCount: selectedInjuryCount,
+      fatalCount: selectedFatalCount,
+      compareLockPass,
+      supportingIds: [...selectedInjuryIds, ...selectedFatalIds],
+      crashWhenRecords: crashWhen.records,
+      documentedYesCount: situate?.documentedStreetChanges?.length ?? 0,
+    });
+    if (!result.ok) {
+      legendTourTimers.current.forEach((handle) => window.clearTimeout(handle));
+      legendTourTimers.current = [];
+      setLegendDeliverable(null);
+      setLegendTrace({
+        ok: false,
+        text: `Refused: ${result.reason} · Tools: none · Records through ${formatDateLong(data.meta.analysisEnd)}`,
+        tools: [],
+      });
+      return;
+    }
+    for (const call of result.tools) {
+      const args = call.args;
+      switch (call.tool) {
+        case "selectPlace":
+          if (typeof args.placeId === "string") selectPlace(args.placeId);
+          break;
+        case "setLens":
+          if (args.lens === "injury" || args.lens === "fatal") setLens(args.lens);
+          break;
+        case "setRoadUser":
+          if (args.roadUser === "everyone" || args.roadUser === "pedestrian" || args.roadUser === "cyclist" || args.roadUser === "motorist") {
+            setRoadUser(args.roadUser);
+            setAgreementFilter("all");
+            setFocusGroup(null);
+          }
+          break;
+        case "setWindow":
+          if (args.windowKey === "24m" || args.windowKey === "36m" || args.windowKey === "48m") {
+            setWindowKey(args.windowKey);
+            setShowToll(args.windowKey === "36m" ? showToll : false);
+            setAgreementFilter("all");
+            setFocusGroup(null);
+          }
+          break;
+        case "openInspect":
+          setScreen("inspect");
+          setTab(args.tab === "records" ? "records" : "why");
+          break;
+        case "setCrashYear":
+          if (typeof args.year === "string") {
+            setCrashYearFocus(args.year);
+            setTab("records");
+            setScreen("inspect");
+          }
+          break;
+        case "openCompare":
+          setCompareOpen(true);
+          setScreen("compare");
+          break;
+        case "composeWhyPlace":
+          setScreen("inspect");
+          setTab("why");
+          window.setTimeout(() => document.querySelector("[data-testid=why-this-place-surfaced]")?.scrollIntoView({ block: "nearest" }), 40);
+          break;
+        case "composeEvidenceBrief":
+        case "openPacket":
+          if (typeof args.placeId === "string") setPacketSubjectId(args.placeId);
+          setBriefGeneratedAt(new Date().toISOString());
+          setTab("packet");
+          setScreen("packet");
+          break;
+        case "walkThroughPlace": {
+          const steps = Array.isArray(args.steps) ? args.steps as { tab: InspectorTab; caption: string }[] : [];
+          legendTourTimers.current.forEach((handle) => window.clearTimeout(handle));
+          legendTourTimers.current = [];
+          setScreen("inspect");
+          steps.forEach((step, index) => {
+            const handle = window.setTimeout(() => {
+              if (step.tab === "why" || step.tab === "records" || step.tab === "situate" || step.tab === "robustness") setTab(step.tab);
+              setLegendDeliverable({ kind: "walk", walkCaption: step.caption });
+            }, index * 700);
+            legendTourTimers.current.push(handle);
+          });
+          break;
+        }
+        case "challengeCase":
+          setScreen("inspect");
+          setTab("why");
+          break;
+        case "listMissingEvidence":
+          setScreen("inspect");
+          setTab("why");
+          break;
+        case "observedHours":
+          setScreen("inspect");
+          setTab("records");
+          break;
+        default:
+          break;
+      }
+    }
+    if (result.challenge) setLegendDeliverable({ kind: "challenge", challenge: result.challenge as { supports: string; weakens: string; unknowns: string; strongest: string } });
+    else if (result.missing) setLegendDeliverable({ kind: "missing", missing: result.missing as { items: string[]; never: string } });
+    else if (result.hours) setLegendDeliverable({ kind: "hours", hours: result.hours as { buckets: { hour: number; count: number }[]; unknown: number; total: number; prohibition: string } });
+    else if (!result.walk) setLegendDeliverable(null);
+    setLegendTrace({
+      ok: true,
+      text: `Job understood: ${result.understood} · Tools: ${result.toolNames.join(", ")} · Records through ${formatDateLong(data.meta.analysisEnd)}`,
+      tools: result.toolNames,
+    });
   };
 
   return (
@@ -1942,13 +2873,18 @@ export default function Home() {
           {(["overview", "explore", "inspect", "compare", "packet"] as ActiveScreen[]).map((item, index) => {
             const packetUnavailable = false;
             const compareNeedsPlaces = item === "compare" && comparePlaces.length !== 2;
-            const needsSelection = (item === "inspect" || item === "packet") && !selected;
+            const needsSelection = (item === "inspect" && !selected) || (item === "packet" && !selected && !packetSubject);
             return <button key={item} className={screen === item ? "active" : ""} disabled={packetUnavailable} title={compareNeedsPlaces ? "Choose place A and B on Explore first." : needsSelection ? "Choose a place on Explore first." : undefined} onClick={() => {
               if (needsSelection) { setScreen("explore"); return; }
               if (item === "compare" && compareNeedsPlaces) { startCompare(); return; }
               setScreen(item);
               setCompareOpen(item === "compare");
-              if (item === "packet") { setTab("packet"); setBriefGeneratedAt(new Date().toISOString()); }
+              if (item === "packet") {
+                const subjectId = resolvePacketSubject({ packetSubjectId, compareIds, selectedId });
+                if (subjectId) setPacketSubjectId(subjectId);
+                setTab("packet");
+                setBriefGeneratedAt(new Date().toISOString());
+              }
             }}><b>{index + 1}</b>{item[0].toUpperCase() + item.slice(1)}</button>;
           })}
         </nav>
@@ -1966,18 +2902,49 @@ export default function Home() {
         <button onClick={() => setMethodOpen(true)}><LockKeyhole size={12} />Locked method</button>
       </div>
 
-      {screen === "overview" && <section className="overview-screen">
-        <div className="overview-copy"><span className="eyebrow">NYC street-safety evidence</span><h1>Look at places. Switch injury and fatal. Open one to see why it showed up.</h1><p>The same locked records sit under both views. Pick a place on the map, then read the counts and what official records say on the street.</p><button onClick={() => setScreen("explore")}>Explore the NYC map <ChevronRight size={17} /></button></div>
-        <div className="overview-steps"><article><span>01</span><strong>Explore</strong><p>See ranked places on the map. Switch injury-involved and fatal to see which rise.</p></article><article><span>02</span><strong>Inspect</strong><p>Open a place for counts, crash records, checks, and documented street facts.</p></article><article><span>03</span><strong>Compare</strong><p>Put two places side by side under the same rules.</p></article></div>
+      {shareRefuse && <div className="share-refuse" data-testid="share-refuse" role="alert"><AlertTriangle size={16} /><div><strong>Investigation set not opened</strong><p>{shareRefuse}</p></div><button type="button" onClick={() => setShareRefuse(null)}>Dismiss</button></div>}
+
+      {screen !== "overview" && <form className="legend-task-box" data-testid="legend-task-box" onSubmit={submitLegendTask}>
+        <label className="legend-task-field">
+          <Search size={15} />
+          <span className="sr-only">Ask Legend task</span>
+          <input ref={legendTaskRef} data-testid="legend-task-input" value={legendTask} onChange={(event) => setLegendTask(event.target.value)} placeholder="What are you trying to do?" aria-label="What are you trying to do?" />
+        </label>
+        <p className="legend-task-honesty" data-testid="legend-task-honesty">{ASK_LEGEND_TASK_HONESTY}</p>
+        {legendTrace && <p className={`legend-task-trace ${legendTrace.ok ? "ok" : "refused"}`} data-testid="legend-task-trace" data-tools={legendTrace.tools.join(",")} aria-live="polite">{legendTrace.text}</p>}
+        {legendDeliverable?.kind === "walk" && legendDeliverable.walkCaption && <p className="legend-task-deliverable" data-testid="legend-task-deliverable">{legendDeliverable.walkCaption}</p>}
+        {legendDeliverable?.kind === "challenge" && legendDeliverable.challenge && <dl className="legend-task-deliverable" data-testid="legend-task-deliverable">
+          <div><dt>Supports</dt><dd>{legendDeliverable.challenge.supports}</dd></div>
+          <div><dt>Weakens</dt><dd>{legendDeliverable.challenge.weakens}</dd></div>
+          <div><dt>Unknowns</dt><dd>{legendDeliverable.challenge.unknowns}</dd></div>
+          <div><dt>Strongest defensible</dt><dd>{legendDeliverable.challenge.strongest}</dd></div>
+        </dl>}
+        {legendDeliverable?.kind === "missing" && legendDeliverable.missing && <div className="legend-task-deliverable" data-testid="legend-task-deliverable">
+          <p>Still needed for a stronger claim (unknown — not untreated):</p>
+          <ul>{legendDeliverable.missing.items.map((item) => <li key={item}>{item}</li>)}</ul>
+          <p>{legendDeliverable.missing.never}</p>
+        </div>}
+        {legendDeliverable?.kind === "hours" && legendDeliverable.hours && <div className="legend-task-deliverable" data-testid="legend-task-deliverable">
+          <p>Observed hour of crash_time on supporting IDs <small>source_fact</small></p>
+          <ul className="legend-hour-buckets">{legendDeliverable.hours.buckets.map((row) => <li key={row.hour}><strong>{String(row.hour).padStart(2, "0")}:00</strong> {row.count}</li>)}</ul>
+          {legendDeliverable.hours.unknown > 0 && <p>{legendDeliverable.hours.unknown} supporting IDs have no published time.</p>}
+          <p>{legendDeliverable.hours.prohibition}</p>
+        </div>}
+      </form>}
+
+      {screen === "overview" && <section className="overview-screen" data-testid="overview-screen">
+        <div className="overview-city" aria-hidden="true" />
+        <div className="overview-copy"><span className="eyebrow">NYC street-safety evidence</span><h1>Look at places. Switch injury and fatal. Open one to see why it showed up.</h1><p>Look at places. Switch Hurt and Died. Open one to see the crash reports.</p><button data-testid="open-the-map" onClick={openTheMap}>Open the map <ChevronRight size={17} /></button></div>
+        <div className="overview-steps" data-testid="overview-steps"><article><span>01</span><strong>Explore</strong><p>Look at places on the night map.</p></article><article><span>02</span><strong>Inspect</strong><p>Open one. Switch Hurt and Died.</p></article><article><span>03</span><strong>Compare</strong><p>Put two places under the same lock.</p></article></div>
         <p className="overview-limit"><LockKeyhole size={14} />This tool supports a closer look. It does not say what to build or which place is official priority.</p>
       </section>}
 
       {screen !== "overview" && <div className={`workspace screen-${screen} ${compareOpen ? "compare-open" : ""}`}>
         {screen === "explore" && <aside className="screen-panel">
-          <div className="panel-heading">
-            <span className="eyebrow">Map scoreboard · {lens === "injury" ? "Hurt" : "Died"}</span>
+          <div className="panel-heading" data-testid="explore-list-heading" data-list-kind={exploreListKind}>
+            <span className="eyebrow">{exploreListKind === "search" ? "These search matches" : exploreListKind === "pile" ? `This pile · ${formatNumber(focusGroup?.ids.length ?? 0)} places` : `Closer look · whole city · ${lens === "injury" ? "Hurt" : "Died"}`}</span>
             <h1>Places with crash reports</h1>
-            <p>Higher on this list means more crash reports under your choices—not more danger or official priority.</p>
+            <p>{exploreListKind === "search" ? "These rows match the search under the active lock. This is not city closer-look order." : exploreListKind === "pile" ? "These are the places in this numbered stack. Not city closer-look order." : "This is city closer-look order, not what the camera is looking at. Higher means more crash reports under your choices—not more danger or official priority."}</p>
           </div>
 
           <div className="surface-freshness" data-testid="explore-freshness">
@@ -1985,6 +2952,12 @@ export default function Home() {
             <div><strong>Records through {formatDateLong(data.meta.analysisEnd)}</strong><span>Source status: {data.meta.sourceStatus}. Recent records may backfill or revise.</span></div>
           </div>
 
+          <div className="who-lock-row" data-testid="who-lock-row" role="group" aria-label="Who was harmed">
+            <span>Who</span>
+            {(["everyone", "pedestrian", "cyclist", "motorist"] as RoadUser[]).map((group) => (
+              <button key={group} type="button" className={roadUser === group ? "active" : ""} data-testid={`who-rail-${group}`} onClick={() => { setRoadUser(group); setAgreementFilter("all"); setFocusGroup(null); }}>{ROAD_USER_LABELS[group]}</button>
+            ))}
+          </div>
           <details className="left-method-details">
           <summary>Map controls are above the map</summary>
           <div className="left-method-details-body">
@@ -2069,23 +3042,28 @@ export default function Home() {
 
           <details className="secondary-controls"><summary><SlidersHorizontal size={13} />More filters</summary><div className="filter-grid">
             <label><span>Agreement</span><select disabled={!baselineMethod} value={baselineMethod ? agreementFilter : "all"} onChange={(event) => { setFocusGroup(null); setAgreementFilter(event.target.value as AgreementFilter); }}><option value="all">All states</option><option value="injury_led">Injury-led</option><option value="fatal_led">Fatal-led</option><option value="both">Both</option></select></label>
-            <label><span>Analytical LION corridor</span><select value={corridorId} onChange={(event) => { setCorridorId(event.target.value); setFocusGroup(null); }}><option value="">All released places</option>{Object.values(p25.corridors).sort((a, b) => a.displayName.localeCompare(b.displayName) || a.boroughName.localeCompare(b.boroughName) || a.componentOrdinal - b.componentOrdinal).map((corridor) => <option key={corridor.corridorId} value={corridor.corridorId}>{corridor.displayName} · {corridor.boroughName} · component {corridor.componentOrdinal}</option>)}</select></label>
+            <label><span>Analytical LION corridor</span><select data-testid="analytical-corridor-select" value={corridorId} onChange={(event) => { setCorridorId(event.target.value); setFocusGroup(null); }}><option value="">All released places</option>{Object.values(p25.corridors).sort((a, b) => a.displayName.localeCompare(b.displayName) || a.boroughName.localeCompare(b.boroughName) || a.componentOrdinal - b.componentOrdinal).map((corridor) => <option key={corridor.corridorId} value={corridor.corridorId}>{corridorPickerLabel(corridor)}</option>)}</select></label>
           </div></details>
 
-          {activeCorridor && <section className="corridor-summary" data-testid="corridor-summary"><span className="eyebrow">Analytical LION corridor · not a DOT program layer</span><strong>{activeCorridor.displayName} · {activeCorridor.boroughName} · component {activeCorridor.componentOrdinal}</strong>{baselineMethod ? <p>{activeCorridor.uniqueSegmentIdCount} unique LION segments · {activeCorridor.metrics[lens].count} unique {lens === "injury" ? "injury-involved" : "fatal"} crash records · equality {activeCorridor.metrics[lens].count === activeCorridor.metrics[lens].ids.length ? "PASS" : "FAIL"}</p> : <p>This picker constrains places to this released component. Component roll-ups are released only for Everyone · 36m, so no {ROAD_USER_LABELS[roadUser]} / {windowKey} total is shown.</p>}</section>}
+          {activeCorridor && <section className="corridor-summary" data-testid="corridor-summary"><span className="eyebrow">Analytical LION corridor · not a DOT program layer</span><strong>{activeCorridor.displayName} · {activeCorridor.boroughName} · component {activeCorridor.componentOrdinal}</strong><code data-testid="corridor-component-id">{activeCorridor.corridorId}</code>{baselineMethod && activeCorridorRollup ? <p>{activeCorridor.uniqueSegmentIdCount} unique LION segments · {activeCorridorRollup.count} {activeCorridorRollup.noun} · equality {activeCorridorRollup.count === activeCorridorRollup.ids.length ? "PASS" : "FAIL"}</p> : <p>This picker constrains places to this released component. Component roll-ups are released only for Everyone · 36m, so no {ROAD_USER_LABELS[roadUser]} / {windowKey} total is shown.</p>}<p>Not Vision Zero View, SIP, or official priority. Search is not this lock.</p></section>}
           </div>
           </details>
 
-          <div className="order-label"><SlidersHorizontal size={14} /><span><strong>Analytical order</strong> · {lens === "injury" ? "injury-involved" : "fatal"} · {ROAD_USER_LABELS[roadUser]} · {windowKey} · not intervention priority</span></div>
-          <div className="place-list">
+          <div className="order-label"><SlidersHorizontal size={14} /><span><strong>{exploreListKind === "search" ? "Search matches" : exploreListKind === "pile" ? "This pile" : "Analytical order"}</strong> · {lens === "injury" ? "injury-involved" : "fatal"} · {ROAD_USER_LABELS[roadUser]} · {windowKey} · not intervention priority</span></div>
+          {focusGroup && !query.trim() && <div className="list-pile-banner" data-testid="list-pile-banner"><div><strong>This pile · {formatNumber(focusGroup.ids.length)} places</strong><span>Pick a row. Back restores city closer-look order.</span></div><button type="button" onClick={goBackOnMap}>Back</button></div>}
+          <div className="place-list" data-testid="explore-place-list">
             {visiblePlaces.map((place) => {
               const isSelected = Boolean(selected && place.id === selected.id);
               const keptOnFlip = isSelected && selectedKeptOnFlip;
               return (
-              <button key={place.id} className={`place-row ${isSelected ? "selected" : ""} ${keptOnFlip ? "kept-on-flip" : ""}`} data-testid={keptOnFlip ? "kept-on-flip-row" : undefined} onClick={() => selectPlace(place.id)}>
-                <span className="rank-no"><small>Order</small>{visiblePlaces.indexOf(place) + 1}</span>
+              <button key={place.id} className={`place-row ${isSelected ? "selected" : ""} ${keptOnFlip ? "kept-on-flip" : ""} ${exploreListKind === "pile" ? "pile-member" : ""}`} data-place-id={place.id} data-testid={keptOnFlip ? "kept-on-flip-row" : undefined} onClick={() => selectPlace(place.id)}>
+                <span className="rank-no"><small>{exploreListKind === "city" ? "Order" : exploreListKind === "pile" ? "In pile" : "Match"}</small>{visiblePlaces.indexOf(place) + 1}</span>
                 <span className="place-copy"><strong>{placeTitle(place, placeLabels)}</strong>{baselineMethod && <StateTag state={place.lensAgreementState} />}{keptOnFlip && <small className="kept-on-flip-label">Selected · kept on lens flip</small>}{compareIds.includes(place.id) && <small className="compare-badge">{compareIds.indexOf(place.id) === 0 ? "A" : "B"}</small>}{savedIds.includes(place.id) && <Bookmark className="saved-mark" size={12} />}</span>
-                <span className="row-count"><strong>{countFor(place)}</strong><small>records</small></span>
+                {exploreListKind === "pile" ? (
+                  <span className="row-pair"><span><strong>{countFor(place, "injury")}</strong><small>Hurt</small></span><span><strong>{countFor(place, "fatal")}</strong><small>Died</small></span></span>
+                ) : (
+                  <span className="row-count"><strong>{countFor(place)}</strong><small>records</small></span>
+                )}
                 <ChevronRight size={15} />
               </button>
               );
@@ -2094,7 +3072,9 @@ export default function Home() {
           <p className="list-footnote">{query.trim()
             ? (visiblePlaces.length
               ? `Showing ${visiblePlaces.length} matching places from the full frozen universe.`
-              : "No frozen places matched. Searches this frozen evidence only.")
+              : `No place with that name in this list. Try Street & Street.${searchNearMissTitles.length ? ` Near matches: ${searchNearMissTitles.join("; ")}.` : ""} Searches this frozen evidence only.`)
+            : focusGroup
+              ? `This pile · ${formatNumber(visiblePlaces.length)} places. Back restores city closer-look order.`
             : situateYesPlaceIds
               ? (visiblePlaces.length
                 ? `Showing ${visiblePlaces.length} places with documented Yes under the active Ask Legend chip (${formatNumber(situateYesPlaceIds.length)} in frozen index).`
@@ -2103,10 +3083,35 @@ export default function Home() {
               ? `Analytical order — not intervention priority. Showing the top 32 places under the ${lens === "injury" ? "injury-involved" : "fatal"} lens, plus the selected place; search reaches all ${formatNumber(mode === "intersection_node" ? data.meta.counts.intersectionPlaces : data.meta.counts.midblockPlaces)}.`
               : `Analytical order — not intervention priority. Showing the top ${visiblePlaces.length} places under the ${lens === "injury" ? "injury-involved" : "fatal"} lens; search reaches all ${formatNumber(mode === "intersection_node" ? data.meta.counts.intersectionPlaces : data.meta.counts.midblockPlaces)}.`}</p>
           {!baselineMethod && <p className="method-universe-note"><Info size={12} />{p25.meta.fixedUniverseDisclosure} Rows are ordered by released count with a stable LION-ID tie break; no new priority tier is created.</p>}
-          <details data-testid="review-tray" className="review-tray"><summary><Bookmark size={15} /><strong>Saved for review</strong><span>{savedPlaces.length}</span></summary><p>Your working set — not a priority list.</p>{savedPlaces.length ? <div className="saved-list">{savedPlaces.map((place) => <button key={place.id} onClick={() => selectPlace(place.id)}>{placeTitle(place, placeLabels)}</button>)}</div> : <p>No places saved yet.</p>}</details>
+          <details data-testid="review-tray" className="review-tray" open={savedPlaces.length > 0 || Boolean(shareRefuse)}>
+            <summary><Bookmark size={15} /><strong>Saved for review</strong><span>{savedPlaces.length}</span></summary>
+            <p data-testid="share-set-copy">Your working set — not a priority list. Investigation set / working set — not official DOT ranking.</p>
+            {savedPlaces.length ? <div className="saved-list">{savedPlaces.map((place) => <button key={place.id} data-place-id={place.id} onClick={() => selectPlace(place.id)}>{placeTitle(place, placeLabels)}</button>)}</div> : <p>No places saved yet. Save is explicit — this tray is not a citywide priority board.</p>}
+            {savedPlaces.length > 0 && <div className="share-tray-actions">
+              <button type="button" data-testid="share-copy-link" className="utility-button" onClick={() => { void copyShareLink(); }}><Link size={14} />{shareCopied ? "Link copied" : "Copy link"}</button>
+              <button type="button" data-testid="share-export-json" className="utility-button" onClick={exportShareJson}><Copy size={14} />Export JSON</button>
+            </div>}
+          </details>
         </aside>}
 
-        {screen !== "packet" && <section className="map-panel" aria-label="Map and assignment visibility">
+        {screen !== "packet" && <section className={`map-panel${compareOpen && !compareLockPass ? " compare-lock-lost" : ""}`} data-testid="map-panel" aria-label="Map and assignment visibility">
+          <div ref={mapHudRef} className={`map-hud ${mapHudExpanded ? "expanded" : "collapsed"}`} data-testid="map-hud-overlay" data-expanded={mapHudExpanded ? "true" : "false"}>
+          <div className="map-hud-compact" data-testid="map-hud-collapsed-bar">
+            <div className="camera-toolbar" aria-label="Where to look">
+              <button className="back-button" disabled={!mapHasBack} onClick={goBackOnMap}>Back</button>
+              <select className="map-look-select" data-testid="map-look-select" aria-label="Looking at" value={mapLookBorough ?? ""} onChange={(event) => event.target.value ? lookAtBorough(event.target.value) : showWholeCity()}>
+                <option data-testid="fit-nyc" value="">Whole city</option>
+                {Object.keys(BOROUGH_FRAMES).map((borough) => <option key={borough} value={borough}>{borough}</option>)}
+              </select>
+              <label className="map-search-box"><Search size={15} /><input value={query} onChange={(event) => searchFromMap(event.target.value)} placeholder="Search a street" aria-label="Search a street on the map" title={query.trim() && !searchMatchRank?.size ? "No place with that name. Try Street & Street." : undefined} />{query && <button aria-label="Clear street search" onClick={() => { setQuery(""); setSelectedId(null); }}><X size={14} /></button>}</label>
+              {query.trim() && !searchMatchRank?.size ? <span className="sr-only" data-testid="map-search-zero">No place with that name in this list. Try Street & Street.</span> : null}
+            </div>
+            <div className="map-choice lens-choice map-hud-lens" role="group" aria-label="Harm lens"><button className={`injury ${lens === "injury" ? "active" : ""}`} onClick={() => setLens("injury")}>Hurt</button><button className={`fatal ${lens === "fatal" ? "active" : ""}`} onClick={() => setLens("fatal")}>Died</button></div>
+            <div className="map-choice map-hud-who" data-testid="map-hud-who" role="group" aria-label="Who was harmed">{(["everyone", "pedestrian", "cyclist", "motorist"] as RoadUser[]).map((group) => <button key={group} type="button" className={roadUser === group ? "active" : ""} data-testid={`who-chip-${group}`} onClick={() => { setRoadUser(group); setAgreementFilter("all"); setFocusGroup(null); }}>{ROAD_USER_MAP_LABELS[group]}</button>)}</div>
+            <span className="sr-only" aria-live="polite">{lens === "injury" ? "Hurt · places with a hurt-report record. The list is the closer look." : "Died · only places with a death record. Many Hurt places go dark."}</span>
+            <button className="map-hud-toggle" type="button" aria-expanded={mapHudExpanded} onClick={() => setMapHudExpanded((value) => !value)}>{mapHudExpanded ? "Hide" : "Show more"}</button>
+          </div>
+          <div className="map-hud-expanded" aria-hidden={!mapHudExpanded}>
           <div className="map-toolbar">
             <div>
               <span className="eyebrow">NYC crash-report map</span>
@@ -2115,47 +3120,61 @@ export default function Home() {
             <details className="map-layer-menu"><summary>Extra faint marks</summary><div className="uncertainty-controls">
               <label title="Hollow, low-emphasis, visible context only; never ranked."><input type="checkbox" checked={showPossible} onChange={(e) => setShowPossible(e.target.checked)} /><span />Possible / exception <b>{formatNumber(data.meta.counts.possibleOrExceptionEvents)}</b></label>
               <label><input type="checkbox" checked={showUnresolved} onChange={(e) => setShowUnresolved(e.target.checked)} /><span />Unresolved <b>{formatNumber(data.meta.counts.unresolvedEvents)}</b></label>
+              <label><input type="checkbox" checked={showOldPhoto} onChange={(e) => setShowOldPhoto(e.target.checked)} /><span />Old photo (2018) <b>optional</b></label>
               <p>Extra faint marks are not on the main list.</p>
             </div></details>
           </div>
           <div className="map-hands" data-testid="map-first-glance-controls">
-          <div className="camera-toolbar" aria-label="Where to look">
-            <button className="back-button" disabled={!mapHasBack} onClick={goBackOnMap}>Back</button>
-            <button data-testid="fit-nyc" onClick={showWholeCity}><RotateCcw size={13} />Whole city</button>
-            {Object.keys(BOROUGH_FRAMES).map((borough) => <button className={mapLookBorough === borough ? "active" : ""} key={borough} onClick={() => lookAtBorough(borough)}>Look at {borough === "Staten Island" ? "Staten Is." : borough}</button>)}
-            <label className="map-search-box"><Search size={15} /><input value={query} onChange={(event) => searchFromMap(event.target.value)} placeholder="Search a street" aria-label="Search a street on the map" />{query && <button aria-label="Clear street search" onClick={() => { setQuery(""); setSelectedId(null); issueCameraCommand("fit"); }}><X size={14} /></button>}</label>
-          </div>
           <div className="map-method-controls">
             <div className="map-choice" role="group" aria-label="Place kind"><span>Where</span><button className={mode === "intersection_node" ? "active" : ""} onClick={() => changeMode("intersection_node")}>Street corners</button><button className={mode === "midblock_segment" ? "active" : ""} onClick={() => changeMode("midblock_segment")}>Middle of block</button></div>
-            <div className="map-choice lens-choice" role="group" aria-label="Harm lens"><span>Reports</span><button className={`injury ${lens === "injury" ? "active" : ""}`} onClick={() => setLens("injury")}>Hurt</button><button className={`fatal ${lens === "fatal" ? "active" : ""}`} onClick={() => setLens("fatal")}>Died</button></div>
-            <div className="map-choice" role="group" aria-label="Who was harmed"><span>Who</span>{(["everyone", "pedestrian", "cyclist", "motorist"] as RoadUser[]).map((group) => <button key={group} className={roadUser === group ? "active" : ""} onClick={() => { setRoadUser(group); setAgreementFilter("all"); setFocusGroup(null); setMapLookBorough(null); }}>{ROAD_USER_MAP_LABELS[group]}</button>)}</div>
-            <div className="map-choice" role="group" aria-label="How long"><span>How long</span>{(["24m", "36m", "48m"] as WindowKey[]).map((period) => <button key={period} className={windowKey === period ? "active" : ""} onClick={() => { setWindowKey(period); setShowToll(period === "36m" ? showToll : false); setAgreementFilter("all"); setFocusGroup(null); setMapLookBorough(null); }}>{WINDOW_MAP_LABELS[period]}</button>)}</div>
-            <details className="map-more-controls"><summary>More</summary><div><label><input type="checkbox" checked={showToll} disabled={windowKey !== "36m"} onChange={(event) => setShowToll(event.target.checked)} /> Show people recorded, beside report counts</label><label><span>This street group (not an official DOT list)</span><select value={corridorId} onChange={(event) => { setCorridorId(event.target.value); setFocusGroup(null); setMapLookBorough(null); }}><option value="">No street group</option>{Object.values(p25.corridors).sort((a, b) => a.displayName.localeCompare(b.displayName) || a.boroughName.localeCompare(b.boroughName) || a.componentOrdinal - b.componentOrdinal).map((corridor) => <option key={corridor.corridorId} value={corridor.corridorId}>{corridor.displayName} · {corridor.boroughName} · group {corridor.componentOrdinal}</option>)}</select></label></div></details>
+            <div className="map-choice" role="group" aria-label="Who was harmed"><span>Who</span>{(["everyone", "pedestrian", "cyclist", "motorist"] as RoadUser[]).map((group) => <button key={group} className={roadUser === group ? "active" : ""} onClick={() => { setRoadUser(group); setAgreementFilter("all"); setFocusGroup(null); }}>{ROAD_USER_MAP_LABELS[group]}</button>)}</div>
+            <div className="map-choice" role="group" aria-label="How long"><span>How long</span>{(["24m", "36m", "48m"] as WindowKey[]).map((period) => <button key={period} className={windowKey === period ? "active" : ""} onClick={() => { setWindowKey(period); setShowToll(period === "36m" ? showToll : false); setAgreementFilter("all"); setFocusGroup(null); }}>{WINDOW_MAP_LABELS[period]}</button>)}</div>
+            <details className="map-more-controls"><summary>More</summary><div><label><input type="checkbox" checked={showToll} disabled={windowKey !== "36m"} onChange={(event) => setShowToll(event.target.checked)} /> Show people recorded, beside report counts</label><label><span>This street group (not an official DOT list)</span><select data-testid="map-corridor-select" value={corridorId} onChange={(event) => { setCorridorId(event.target.value); setFocusGroup(null); }}><option value="">No street group</option>{Object.values(p25.corridors).sort((a, b) => a.displayName.localeCompare(b.displayName) || a.boroughName.localeCompare(b.boroughName) || a.componentOrdinal - b.componentOrdinal).map((corridor) => <option key={corridor.corridorId} value={corridor.corridorId}>{corridorPickerLabel(corridor)}</option>)}</select></label></div></details>
           </div>
           </div>
+          <p className={`map-lens-glance ${lens}`} data-testid="map-lens-glance" aria-live="polite">{lens === "injury" ? "Hurt · places with a hurt-report record. The list is the closer look." : "Died · only places with a death record. Many Hurt places go dark."}</p>
           <div className="map-coach" data-testid="map-coach" aria-live="polite"><strong>{mapLookBorough ? `Looking at ${mapLookBorough}` : focusGroup ? `This pile · ${formatNumber(focusGroup.ids.length)} places` : selected ? "Place picked" : "Start here"}</strong><span>{mapCoach}</span></div>
-          <p className="map-framing-hint" data-testid="cluster-framing-hint"><strong>A number is a pile.</strong> Click it to look inside, or zoom in.</p>
+          <p className="map-framing-hint" data-testid="cluster-framing-hint"><strong>A number is how many {stackedPlaceWord} are stacked.</strong> Click it to look inside, or zoom in. It is not crash records.</p>
           {(query.trim() || situateYesPlaceIds || agreementFilter !== "all" || !baselineMethod || corridorId) && <div data-testid="map-filter-parity" className="map-filter-parity" aria-live="polite"><strong>Map and list show the same places</strong><span>{formatNumber(mapEligiblePlaceIds.length)} {mode === "intersection_node" ? "places" : "segments"} · {ROAD_USER_MAP_LABELS[roadUser]} · {WINDOW_MAP_LABELS[windowKey]}{corridorId ? " · street group" : ""}</span></div>}
           {focusGroup && <div data-testid="map-focus-group" className="map-focus-banner"><div><strong>This pile · {formatNumber(focusGroup.ids.length)} places</strong><span>Other places are faint. Pick a dot, or go Back.</span></div><button onClick={goBackOnMap}>Back</button></div>}
           <div className="map-honesty" data-testid="map-honesty"><span>These marks are places with crash reports, not how scary the street is.</span><strong>More reports ≠ more dangerous — we do not know how busy it is.</strong><span>The list is where to look next, not “fix these first.” Walking, bikes, and cars can share the same crash.</span></div>
-          <Phase32MapSurface data={data} selected={selected && mapEligiblePlaceIdSet.has(selected.id) ? selected : null} mode={mode} lens={lens} agreementFilter={baselineMethod ? agreementFilter : "all"} eligiblePlaceIds={mapEligiblePlaceIds} filtersActive={Boolean(query.trim() || situateYesPlaceIds || agreementFilter !== "all" || !baselineMethod || corridorId)} showPossible={showPossible} showUnresolved={showUnresolved} comparePlaces={comparePlaces} cameraCommand={cameraCommand} focusGroup={focusGroup} onSelect={selectPlace} onPreview={setPreviewId} onFocusGroup={showFocusGroup} />
+          </div>
+          </div>
+          <Phase32MapSurface data={data} selected={selected && mapEligiblePlaceIdSet.has(selected.id) ? selected : null} mode={mode} lens={lens} agreementFilter={baselineMethod ? agreementFilter : "all"} eligiblePlaceIds={mapEligiblePlaceIds} emphasizedPlaceIds={emphasizedMapPlaceIds} showPossible={showPossible} showUnresolved={showUnresolved} showOldPhoto={showOldPhoto} comparePlaces={comparePlaces} cameraCommand={cameraCommand} focusGroup={focusGroup} hudHeight={mapHudHeight} onSelect={selectPlace} onPreview={setPreviewId} onFocusGroup={showFocusGroup} />
           {preview && (!selected || preview.id !== selected.id) && <div className="map-preview"><span className="eyebrow">Preview</span><strong>{placeTitle(preview, placeLabels)}</strong><div><span>{countFor(preview, "injury")} injury-involved</span><span>{countFor(preview, "fatal")} fatal</span></div>{baselineMethod && <StateTag state={preview.lensAgreementState} />}</div>}
-          {screen === "explore" && !compareMode && selected && mapEligiblePlaceIdSet.has(selected.id) && <div data-testid="selected-place-card" className="selected-place-card"><span className="eyebrow">You picked this place</span><strong>{placeTitle(selected, placeLabels)}</strong><div><span><b>{selectedInjuryCount}</b> hurt-report records</span><span><b>{selectedFatalCount}</b> fatal records</span></div><small>{ROAD_USER_MAP_LABELS[roadUser]} · {WINDOW_MAP_LABELS[windowKey]}</small><button onClick={() => { setScreen("inspect"); setTab("why"); }}>Open this place <ChevronRight size={14} /></button></div>}
+          {screen === "explore" && !compareMode && selected && mapEligiblePlaceIdSet.has(selected.id) && <div data-testid="selected-place-card" className="selected-place-card lock-on-chip" data-road-user={roadUser} data-window={windowKey} data-lens={lens} data-injury-count={selectedInjuryCount} data-fatal-count={selectedFatalCount}><span className="eyebrow">You picked this</span><strong>{placeTitle(selected, placeLabels)}</strong><div><span data-testid="lock-on-injury"><b>{selectedInjuryCount}</b> Hurt</span><span data-testid="lock-on-fatal"><b>{selectedFatalCount}</b> Died</span></div><small data-testid="lock-on-lock">{ROAD_USER_MAP_LABELS[roadUser]} · {WINDOW_MAP_LABELS[windowKey]} · {lens === "injury" ? "Hurt" : "Died"}{selectedKeptOnFlip ? " · kept on lens flip" : ""}</small><button onClick={() => { setScreen("inspect"); setTab("why"); }}>Open this place <ChevronRight size={14} /></button></div>}
           {compareMode && <div className="compare-mini" aria-live="polite"><div><span className="compare-letter">A</span><span><strong>{comparePlaces[0] ? placeTitle(comparePlaces[0], placeLabels) : "Choose place A"}</strong></span></div><ArrowLeftRight size={16} /><div><span className="compare-letter">B</span><span><strong>{comparePlaces[1] ? placeTitle(comparePlaces[1], placeLabels) : "Select a second place on map or list"}</strong></span></div><button data-testid="open-compare" disabled={comparePlaces.length !== 2 || !compareLockPass} onClick={() => { setCompareOpen(true); setScreen("compare"); }}>Open compare</button><button className="icon-button" aria-label="Clear comparison" onClick={() => { setCompareMode(false); setCompareIds([]); }}><X size={15} /></button></div>}
         </section>}
 
         {(screen === "inspect" || screen === "compare") && <aside className={`inspector-panel ${compareOpen ? "comparison-drawer" : ""}`}>
           {compareOpen ? (
             <>
-              <div className="compare-header"><div><span className="eyebrow">Compare · shared locked method</span><h2>Two {mode === "intersection_node" ? "intersections" : "midblock segments"}, one evidence frame</h2></div><button className="icon-button" aria-label="Close comparison" onClick={() => { setCompareOpen(false); setScreen("explore"); }}><X size={18} /></button></div>
+              <div className="compare-header"><div><span className="eyebrow">Compare · one shared lock</span><h2>Two {mode === "intersection_node" ? "intersections" : "midblock segments"}, one evidence frame</h2></div><button className="icon-button" aria-label="Close comparison" onClick={() => { setCompareOpen(false); setScreen("explore"); }}><X size={18} /></button></div>
               <div className="compare-controls"><button onClick={() => setCompareIds((ids) => [...ids].reverse())}><ArrowLeftRight size={14} />Swap A/B</button><label><input type="checkbox" checked={diffOnly} onChange={(event) => setDiffOnly(event.target.checked)} />Differences only</label></div>
-              {!compareLockPass || comparePlaces.length !== 2 ? <div className="compare-blocked"><AlertTriangle /><strong>Comparison blocked</strong><p>Choose two places at the same grain, road-user predicate, and period. If you changed a lock control, restart A/B.</p></div> : <div data-testid="compare-drawer" className="compare-content">
-                <div className="shared-lock"><LockKeyhole size={15} /><span><strong>Method lock PASS</strong> · {activeWindow.start}–{activeWindow.end} · {ROAD_USER_LABELS[roadUser]} · {data.meta.assignmentVersion} · Crash aggregates</span></div>
-                <div className="compare-place-heads">{comparePlaces.map((place, index) => <div key={place.id}><span className="compare-letter">{index === 0 ? "A" : "B"}</span><strong>{placeTitle(place, placeLabels)}</strong>{baselineMethod && <StateTag state={place.lensAgreementState} />}</div>)}</div>
+              <div className="shared-lock-capsule" data-testid="compare-lock-capsule"><LockKeyhole size={15} /><strong>{compareLockPass && comparePlaces.length === 2 ? "Lock PASS" : "Lock broken"}</strong><span>{ROAD_USER_MAP_LABELS[roadUser]}</span><span>{WINDOW_MAP_LABELS[windowKey]}</span><span>{mode === "intersection_node" ? "Intersections" : "Midblock"}</span></div>
+              {!compareLockPass || comparePlaces.length !== 2 ? <div className="compare-blocked" data-testid="compare-blocked"><AlertTriangle /><strong>Comparison blocked</strong><p>The shared Who / How long / grain lock no longer matches both places. The map is dimmed. No difference is shown — restart A/B under one lock.</p></div> : <div data-testid="compare-drawer" className="compare-content">
+                <div className="compare-readouts">{comparePlaces.map((place, index) => (
+                  <div key={place.id} className="compare-readout-col">
+                    <span className="compare-letter">{index === 0 ? "A" : "B"}</span>
+                    <strong>{placeTitle(place, placeLabels)}</strong>
+                    <div className="count-grid">
+                      <CountMark label="Hurt" value={countFor(place, "injury")} active={lens === "injury"} tone="injury" />
+                      <CountMark label="Died" value={countFor(place, "fatal")} active={lens === "fatal"} tone="fatal" />
+                    </div>
+                    <YearChips
+                      buckets={groupCrashIdsByYear([
+                        ...activeP25Ids(p25, place.id, windowKey, roadUser, "injury"),
+                        ...activeP25Ids(p25, place.id, windowKey, roadUser, "fatal"),
+                      ], crashWhen)}
+                      testId={`compare-year-chips-${index === 0 ? "a" : "b"}`}
+                    />
+                    {baselineMethod && <StateTag state={place.lensAgreementState} />}
+                  </div>
+                ))}</div>
                 <p className="delta-sentence">Under this shared lock, A has {countFor(comparePlaces[0])} and B has {countFor(comparePlaces[1])} qualifying crash records. This is an analytical difference, not a risk or treatment conclusion.</p>
                 <div className="compare-table">
-                  <div className="compare-row"><span>Injury-involved records</span><strong>{countFor(comparePlaces[0], "injury")}</strong><strong>{countFor(comparePlaces[1], "injury")}</strong></div>
-                  <div className="compare-row"><span>Fatal records</span><strong>{countFor(comparePlaces[0], "fatal")}</strong><strong>{countFor(comparePlaces[1], "fatal")}</strong></div>
+                  <div className="compare-row"><span>Hurt records</span><strong>{countFor(comparePlaces[0], "injury")}</strong><strong>{countFor(comparePlaces[1], "injury")}</strong></div>
+                  <div className="compare-row"><span>Died records</span><strong>{countFor(comparePlaces[0], "fatal")}</strong><strong>{countFor(comparePlaces[1], "fatal")}</strong></div>
                   {baselineMethod && <div className="compare-row"><span>Lens agreement</span><strong>{formatState(comparePlaces[0].lensAgreementState)}</strong><strong>{formatState(comparePlaces[1].lensAgreementState)}</strong></div>}
                   {!diffOnly || comparePlaces[0].assignmentClass !== comparePlaces[1].assignmentClass ? <div className="compare-row"><span>Assignment</span><strong>{formatState(comparePlaces[0].assignmentClass)}</strong><strong>{formatState(comparePlaces[1].assignmentClass)}</strong></div> : null}
                   {!diffOnly || fragilityRead(comparePlaces[0]) !== fragilityRead(comparePlaces[1]) ? <div className="compare-row"><span>Robustness</span><strong>{fragilityRead(comparePlaces[0])}</strong><strong>{fragilityRead(comparePlaces[1])}</strong></div> : null}
@@ -2200,6 +3219,24 @@ export default function Home() {
           <div className="inspector-scroll">
             {tab === "why" && (
               <div className="tab-content">
+                <section className="inspect-readout" data-testid="inspect-readout">
+                  <span className="eyebrow">Both lenses · identical method</span>
+                  <div className="count-grid">
+                    <CountMark label="Hurt" value={selectedInjuryCount} active={lens === "injury"} tone="injury" />
+                    <CountMark label="Died" value={selectedFatalCount} active={lens === "fatal"} tone="fatal" />
+                  </div>
+                  <YearChips buckets={selectedYearBuckets} selectedYear={crashYearFocus} onSelect={openCrashYear} testId="inspect-year-chips" />
+                  <p className="crash-year-lead" data-testid="crash-year-lead">{crashLogLead(selectedInjuryCount, selectedFatalCount)}</p>
+                  <p className="crash-date-span" data-testid="crash-date-span">Crash records shown here run {selectedCrashDateSpan ? <><time dateTime={selectedCrashDateSpan.earliest}>{formatDateLong(selectedCrashDateSpan.earliest)}</time>{selectedCrashDateSpan.latest !== selectedCrashDateSpan.earliest && <> → <time dateTime={selectedCrashDateSpan.latest}>{formatDateLong(selectedCrashDateSpan.latest)}</time></>}</> : "from an unknown date"}. The period choice sets which records qualify; it is not a crash clock.</p>
+                  {showToll && windowKey === "36m" && <div className="toll-beside-frequency" data-testid="human-toll"><strong>{selectedP25?.toll36[roadUser]?.[lens] ?? 0}</strong><span>{lens === "injury" ? "people recorded injured" : "people recorded killed"} on the same supporting crash records</span><small>Separate display; crash frequency remains default. Person rows do not backfill totals.</small></div>}
+                  <CrashPeopleBeside ids={selectedSupportingIds} crashWho={crashWho} lens={lens} />
+                  <CrashWhoBreakdown ids={selectedSupportingIds} crashWho={crashWho} />
+                  <CrashClockProfile ids={selectedSupportingIds} crashWhen={crashWhen} />
+                </section>
+                <details className="inspect-method-disclosure">
+                  <summary>Count method</summary>
+                  <div className="validation-line"><Check size={15} /><strong>Equality PASS</strong><span>counts match unique supporting IDs under this lock</span></div>
+                </details>
                 <p className="tab-purpose"><Info size={14} /><span><strong>Why this place is on the list</strong>Why it surfaced, what the locked evidence supports, what it cannot establish, and what to investigate next.</span></p>
                 <section className="why-surfaced" data-testid="why-this-place-surfaced">
                   <div className="why-surfaced-head">
@@ -2223,15 +3260,6 @@ export default function Home() {
                   <div className="risk-boundary"><CircleHelp size={17} /><p>Fatality data provides a clear severity signal, but this dataset does not reliably identify which nonfatal injuries were severe. High recorded harm concentration is not the same as high individual risk without exposure (volumes, VMT, trips).</p></div>
                   <div className="next-investigation"><strong>Suggested next investigation</strong><p>Verify rather than assume:</p><ul><li>Field conditions and geometry</li><li>Turning movements and signal operations</li><li>Pedestrian, cyclist, and vehicle volumes</li><li>Existing treatments and their effective dates</li></ul></div>
                   <div className="inspect-freshness" data-testid="inspect-freshness"><AlertTriangle size={15} /><div><strong>Records through {formatDateLong(data.meta.analysisEnd)} · source status: {data.meta.sourceStatus}</strong><span>Recent periods may backfill or revise. This is the latest accepted freeze, not a current-as-of-today street view.</span></div></div>
-                </section>
-                <section>
-                  <span className="eyebrow">Both lenses · identical method</span>
-                  <div className="count-grid">
-                    <CountMark label="Injury-involved" value={selectedInjuryCount} active={lens === "injury"} />
-                    <CountMark label="Fatal" value={selectedFatalCount} active={lens === "fatal"} />
-                  </div>
-                  {showToll && windowKey === "36m" && <div className="toll-beside-frequency" data-testid="human-toll"><strong>{selectedP25?.toll36[roadUser]?.[lens] ?? 0}</strong><span>{lens === "injury" ? "people recorded injured" : "people recorded killed"} on the same supporting crash records</span><small>Separate display; crash frequency remains default. Person rows do not backfill totals.</small></div>}
-                  <div className="validation-line"><Check size={15} /><strong>Equality PASS</strong><span>counts match unique supporting IDs under this lock</span></div>
                 </section>
 
                 {selectedPersistence && <section className="persistence-card" data-testid="persistence-state"><span className="eyebrow">36m ↔ 48m sensitivity · Everyone predicate</span><h4>{selectedPersistence.positive ? "Elevated in both released checks" : "Not elevated in both released checks"}</h4><p>36m: {selectedPersistence.count36} records vs threshold {selectedPersistence.threshold36}. 48m: {selectedPersistence.count48} vs threshold {selectedPersistence.threshold48}. {lens === "fatal" ? "Fatal elevation means at least one fatal crash record — not a high-count tier." : "This is not stable, chronic, hotspot, risk, or official priority."}</p></section>}
@@ -2262,10 +3290,16 @@ export default function Home() {
 
             {tab === "records" && (
               <div className="tab-content">
-                <p className="tab-purpose"><List size={14} /><span><strong>Supporting crash records</strong>{selectedInjuryIds.length + selectedFatalIds.length} lens memberships support the active {ROAD_USER_LABELS[roadUser]} / {windowKey} counts. Exact collision IDs remain available below.</span></p>
-                <section><span className="eyebrow">Supporting collision records</span><h4>Exact IDs behind both counts</h4><p className="method-copy">Every displayed count equals its unique supporting <code>collision_id</code> set. These are police-reported records, not inferred events.</p><div className="validation-line"><Check size={15} /><strong>Equality PASS</strong><span>{selectedInjuryIds.length + selectedFatalIds.length} lens memberships inspected</span></div></section>
-                <EvidenceIds title="Injury-involved IDs" ids={selectedInjuryIds} tone="injury" />
-                <EvidenceIds title="Fatal IDs" ids={selectedFatalIds} tone="fatal" />
+                <p className="crash-year-lead" data-testid="crashes-year-lead">{crashLogLead(selectedInjuryCount, selectedFatalCount)}</p>
+                <CrashWhoBreakdown ids={selectedSupportingIds} crashWho={crashWho} />
+                <CrashClockProfile ids={selectedSupportingIds} crashWhen={crashWhen} />
+                <CrashYearLog injuryIds={selectedInjuryIds} fatalIds={selectedFatalIds} crashWhen={crashWhen} crashWho={crashWho} focusYear={crashYearFocus} onFocusYear={setCrashYearFocus} />
+                <details className="inspect-method-disclosure">
+                  <summary>Supporting crash records</summary>
+                  <h4>When each record occurred</h4>
+                  <p className="method-copy">Every displayed count equals its unique supporting <code>collision_id</code> set. Dates come from the frozen crash snapshot. “How long” sets the qualifying period; it does not say when one crash happened.</p>
+                  <div className="validation-line"><Check size={15} /><strong>Equality PASS</strong><span>{selectedInjuryIds.length + selectedFatalIds.length} lens memberships inspected</span></div>
+                </details>
                 <section className="unsupported-card"><LockKeyhole size={18} /><div><strong>Record limits</strong><p>IDs support the two harm predicates only. They do not establish risk, cause, treatment need, or official priority.</p></div></section>
               </div>
             )}
@@ -2398,29 +3432,65 @@ export default function Home() {
           </>)}
         </aside>}
 
-        {screen === "packet" && selected && <section className="packet-screen evidence-brief-screen" data-testid="evidence-brief-screen">
-          <div className="packet-screen-copy">
-            <span className="eyebrow">Note · meeting artifact</span><h1>DRAFT Evidence Brief</h1><h2>{placeTitle(selected, placeLabels)}</h2><p className="lion-subtitle">{lionLabel(selected)}</p>
-            {!situate && !situateError && !wave2SituateError && <div className="brief-loading" aria-live="polite"><span />Preparing from frozen evidence…</div>}
+        {screen === "packet" && packetSubject && <section className="packet-screen evidence-brief-screen" data-testid="evidence-brief-screen">
+          <div className="packet-readout">
+            <div className="draft-stamp">DRAFT</div>
+            <span className="eyebrow">Note · meeting artifact</span>
+            <h1>DRAFT Evidence Brief</h1>
+            <div className="packet-subject-lock" data-testid="packet-subject">
+              <span className="eyebrow">Investigation lock-on</span>
+              <h2>{placeTitle(packetSubject, placeLabels)}</h2>
+              <code data-testid="packet-subject-id">{packetSubject.id}</code>
+            </div>
+            <p className="lion-subtitle">{lionLabel(packetSubject)}</p>
+            <div className="count-grid packet-giants">
+              <CountMark label="Hurt" value={packetInjuryCount} active={lens === "injury"} tone="injury" />
+              <CountMark label="Died" value={packetFatalCount} active={lens === "fatal"} tone="fatal" />
+            </div>
+            <CrashPeopleBeside ids={packetSupportingIds} crashWho={crashWho} lens={lens} />
+            <CrashWhoBreakdown ids={packetSupportingIds} crashWho={crashWho} />
+            <CrashClockProfile ids={packetSupportingIds} crashWhen={crashWhen} />
+            <YearChips buckets={packetYearBuckets} testId="packet-year-chips" />
+            <p className="crash-date-span" data-testid="packet-date-span">Crash records shown here run {packetCrashDateSpan ? <><time dateTime={packetCrashDateSpan.earliest}>{formatDateLong(packetCrashDateSpan.earliest)}</time>{packetCrashDateSpan.latest !== packetCrashDateSpan.earliest && <> → <time dateTime={packetCrashDateSpan.latest}>{formatDateLong(packetCrashDateSpan.latest)}</time></>}</> : "from an unknown date"}. The period choice sets which records qualify; it is not a crash clock.</p>
+            <div className="brief-method-line" data-testid="packet-method-lock"><LockKeyhole size={14} /><span>{ROAD_USER_MAP_LABELS[roadUser]} · {WINDOW_MAP_LABELS[windowKey]} · {mode === "intersection_node" ? "Intersections" : "Midblock"} · still DRAFT</span></div>
+            {activeCorridor && <p className="packet-corridor-component" data-testid="packet-corridor-component"><code>{activeCorridor.corridorId}</code> · {activeCorridor.displayName} · {activeCorridor.boroughName} · component {activeCorridor.componentOrdinal}. Analytical LION corridor · not a DOT program layer.</p>}
+            {!packetSituate && !situateError && !wave2SituateError && <div className="brief-loading" aria-live="polite"><span />Preparing from frozen evidence…</div>}
             {situateError && <div className="brief-error"><AlertTriangle size={18} /><p>Frozen Situate evidence could not be loaded, so the brief was not fabricated from alternate or live data.</p></div>}
-            {wave2SituateError && baseSituate && <div className="brief-warning"><AlertTriangle size={18} /><p>Wave-2 context could not be loaded. The brief uses only the governed 1F and Wave-1 evidence and keeps the missing family unknown.</p></div>}
+            {wave2SituateError && packetBaseSituate && <div className="brief-warning"><AlertTriangle size={18} /><p>Wave-2 context could not be loaded. The brief uses only the governed 1F and Wave-1 evidence and keeps the missing family unknown.</p></div>}
             {evidenceBrief && <>
-              <div className="brief-method-line"><LockKeyhole size={14} /><span>{evidenceBrief.methodLock.harmLens} lens · {evidenceBrief.methodLock.roadUser} · {formatDateLong(evidenceBrief.methodLock.analysisStart)}–{formatDateLong(evidenceBrief.methodLock.analysisEnd)} · {evidenceBrief.place.grain}</span></div>
-              <section className="brief-preview-section"><span className="eyebrow">Why this place surfaced</span><p>{evidenceBrief.whyThisPlaceSurfaced.statement}</p></section>
-              <section className="brief-preview-section"><span className="eyebrow">Evidence</span><div className="brief-counts">{evidenceBrief.evidence.counts.map((count) => <div key={count.label}><strong>{count.crashRecordCount}</strong><span>{count.label}</span><small>Equality {evidenceBrief.evidence.equalityStatus}</small></div>)}</div></section>
-              {evidenceBrief.evidence.humanToll && <section className="brief-preview-section"><span className="eyebrow">Human toll · separate from frequency</span><p><strong>{evidenceBrief.evidence.humanToll.peopleRecordedTotal}</strong> {evidenceBrief.evidence.humanToll.label}. Frequency remains the default; Person rows do not replace Crash totals.</p></section>}
-              {evidenceBrief.evidence.persistence && <section className="brief-preview-section"><span className="eyebrow">Persistence sensitivity</span><p>{evidenceBrief.evidence.persistence.statement} Never interpreted as stable, chronic, hotspot, risk, or official priority.</p></section>}
-              {evidenceBrief.evidence.corridor && <section className="brief-preview-section"><span className="eyebrow">Analytical LION corridor</span><p><strong>{evidenceBrief.evidence.corridor.label}</strong> · {evidenceBrief.evidence.corridor.crashRecordCount} unique supporting records. Not an official NYC DOT corridor program layer.</p></section>}
-              <section className="brief-preview-section"><span className="eyebrow">Known street context</span><p><strong>{evidenceBrief.knownStreetContext.documentedYes.length}</strong> established source relationship{evidenceBrief.knownStreetContext.documentedYes.length === 1 ? "" : "s"}; <strong>{evidenceBrief.knownStreetContext.unknown.length}</strong> unknown or unresolved note{evidenceBrief.knownStreetContext.unknown.length === 1 ? "" : "s"}. Empty source relationships remain Unknown.</p></section>
-              <section className="brief-preview-section"><span className="eyebrow">Data currency</span><p>{evidenceBrief.dataCurrency.statement}</p></section>
-              <section className="brief-preview-section limitation"><span className="eyebrow">Limitations</span><p>Concentration ≠ risk. Records are not people. No cause, official priority, treatment, or effectiveness claim is made.</p></section>
-              <section className="brief-preview-section next"><span className="eyebrow">Recommended next action</span><p>{evidenceBrief.recommendedNextAction.statement}</p></section>
+              <p className="packet-lead">{evidenceBrief.whyThisPlaceSurfaced.statement}</p>
+              {evidenceBrief.evidence.windowCounts && <p className="packet-window-counts" data-testid="packet-window-counts">Released window counts under this Who and lens: {evidenceBrief.evidence.windowCounts.map((row) => `${row.windowId} ${row.crashRecordCount}`).join(" · ")}. Disclosure only; not a new rank.</p>}
+              <section className="brief-preview-section packet-situate" data-testid="packet-situate">
+                <span className="eyebrow">Known street context · Situate Yes / Unknown</span>
+                {evidenceBrief.knownStreetContext.documentedYes.length
+                  ? evidenceBrief.knownStreetContext.documentedYes.map((item) => <article key={`${item.family}:${item.sourceRecordId}`}><strong>{item.humanLabel}</strong><p>{item.statement}</p></article>)
+                  : <p>Unknown — no established documented relationship appears in the loaded frozen Situate projection.</p>}
+                <h3>Unknown</h3>
+                <ul>{evidenceBrief.knownStreetContext.unknown.map((item) => <li key={`${item.family}:${item.statement}`}>{item.statement}</li>)}</ul>
+              </section>
+              <section className="brief-preview-section packet-date-window" data-testid="packet-date-vs-window">
+                <span className="eyebrow">Documented date vs window · documented_history + calculation</span>
+                {evidenceBrief.documentedDateVsWindow.rows.length
+                  ? evidenceBrief.documentedDateVsWindow.rows.map((row) => <article key={`${row.humanLabel}:${row.documentedDate}`}><strong>{row.humanLabel} · {row.documentedDate}</strong><p>{row.statement}</p><small>{row.prohibition}</small></article>)
+                  : <p>No published Documented Yes date is bound to this supporting crash set.</p>}
+              </section>
+              <section className="brief-preview-section packet-field-request" data-testid="packet-field-request">
+                <span className="eyebrow">Recommended next action · field request</span>
+                <p>{evidenceBrief.recommendedNextAction.statement}</p>
+                <ul>{evidenceBrief.recommendedNextAction.investigate.map((item) => <li key={item}>{item}</li>)}</ul>
+              </section>
+              <section className="brief-preview-section limitation"><span className="eyebrow">Limitations</span><p>Concentration ≠ risk. Records are not people. No cause, official priority, treatment, KSI, or effectiveness claim is made.</p></section>
+              <p className="packet-freshness" data-testid="packet-freshness">{evidenceBrief.dataCurrency.statement}</p>
               <div className="brief-actions"><button className="primary-button" onClick={() => downloadEvidenceBrief("html")}><ArrowDownToLine size={16} />Download DRAFT brief (.html)</button><button className="text-button" onClick={() => downloadEvidenceBrief("json")}><Database size={14} />Download claim-class JSON</button></div>
               {packet && <div className="sample-lep-preserved"><strong>Existing frozen DRAFT Location Evidence Packet</strong><p>A frozen DRAFT packet exists for four sample places only. This sample download stays separate from the any-place Evidence Brief.</p><button className="text-button" onClick={downloadPacket}><ArrowDownToLine size={14} />Download DRAFT LEP (frozen sample)</button></div>}
             </>}
+            <details className="packet-checks-disclosure">
+              <summary>Evidence Brief checks</summary>
+              <div className="checklist">{[["Both-lens equality", packetInjuryCount === packetInjuryIds.length && packetFatalCount === packetFatalIds.length],["Same method lock", true],["Freshness and backfill warning", true],["Known context from Situate only", Boolean(packetSituate)],["Material unknowns explicit", Boolean(evidenceBrief?.knownStreetContext.unknown.length)],["Claim limitations present", true]].map(([label, pass]) => <div key={String(label)}><span className={pass ? "pass" : "fail"}><Check size={13} /></span><strong>{label}</strong><small>{pass ? "Present" : "Waiting"}</small></div>)}</div>
+              <div className="unsupported-card"><LockKeyhole size={18} /><div><strong>This brief does not support</strong><p>Risk, cause, treatment prescription, effectiveness, official priority, KSI, or a durable shortlist. Optional human toll is only a separate Crash-field sum.</p></div></div>
+            </details>
             <button className="text-button" onClick={() => { setScreen("inspect"); setTab("why"); }}><ChevronRight size={14} />Return to Inspect</button>
           </div>
-          <div className="packet-screen-checks"><div className="draft-stamp">DRAFT</div><span className="eyebrow">Evidence Brief checks</span><h3>Portable, bounded, and still DRAFT</h3><div className="checklist">{[["Both-lens equality", selectedInjuryCount === selectedInjuryIds.length && selectedFatalCount === selectedFatalIds.length],["Same method lock", true],["Freshness and backfill warning", true],["Known context from Situate only", Boolean(situate)],["Material unknowns explicit", Boolean(evidenceBrief?.knownStreetContext.unknown.length)],["Claim limitations present", true]].map(([label, pass]) => <div key={String(label)}><span className={pass ? "pass" : "fail"}><Check size={13} /></span><strong>{label}</strong><small>{pass ? "Present" : "Waiting"}</small></div>)}</div><div className="unsupported-card"><LockKeyhole size={18} /><div><strong>This brief does not support</strong><p>Risk, cause, treatment prescription, effectiveness, official priority, KSI, or a durable shortlist. Optional human toll is only a separate Crash-field sum.</p></div></div></div>
         </section>}
       </div>}
 
@@ -2438,7 +3508,7 @@ export default function Home() {
               <div><small>Predicates</small><strong>Crash aggregates only</strong><code>{data.meta.predicateRegistry}</code></div>
               <div><small>Place grain</small><strong>{mode === "intersection_node" ? "Intersection nodes" : "Midblock segments"}</strong><code>never mixed in one rank</code></div>
               <div><small>Road-user predicate</small><strong>{ROAD_USER_LABELS[roadUser]}</strong><code>{activeRoadUserCopy}</code></div>
-              <div><small>Corridor scope</small><strong>{activeCorridor ? `${activeCorridor.displayName} · component ${activeCorridor.componentOrdinal}` : "No corridor filter"}</strong><code>{activeCorridor ? p25.meta.corridorVersion : "place grain"}</code></div>
+              <div><small>Corridor scope</small><strong>{activeCorridor ? `${activeCorridor.displayName} · component ${activeCorridor.componentOrdinal}` : "No corridor filter"}</strong><code>{activeCorridor ? activeCorridor.corridorId : "place grain"}</code></div>
               <div><small>Peer rule</small><strong>Positive-count p90 with ties</strong><code>{data.meta.peerRule}</code></div>
             </div>
             <div className="modal-note"><Info size={17} />A mismatch in window, road-user predicate, geography, assignment, predicates, or grain invalidates the compare. {p25.meta.fixedUniverseDisclosure}</div>

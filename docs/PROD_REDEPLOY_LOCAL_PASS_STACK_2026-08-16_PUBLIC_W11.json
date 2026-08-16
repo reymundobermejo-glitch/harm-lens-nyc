@@ -1,0 +1,384 @@
+{
+  "check": "W11 /data/*.gz real-host serving",
+  "decision": "PASS",
+  "step_e": "AUTHORIZED PRODUCTION REDEPLOY",
+  "w11_host": "PASS",
+  "meaning": "https://harm-lens-nyc.vercel.app serves each /data/*.gz byte-identical to dist without Content-Encoding: gzip. This is the authorized production redeploy proof.",
+  "checked_at_utc": "2026-08-16T22:59:34.708Z",
+  "host": {
+    "url": "https://harm-lens-nyc.vercel.app",
+    "role": "production_redeploy_proof",
+    "accept_encoding": "gzip",
+    "curl_compressed": false,
+    "timeout_sec": 60
+  },
+  "deploy": {
+    "vercel_cli": false,
+    "vercel_token": false,
+    "preview_created": false,
+    "project": null,
+    "product_production_alias": "https://harm-lens-nyc.vercel.app",
+    "product_production_touched": true,
+    "production_cutover": "explicitly authorized production redeploy",
+    "reason": "Set W11_HOST_URL to a preview origin. Do not treat 3012 as production. Do not cut over harm-lens-nyc.vercel.app."
+  },
+  "host_config": {
+    "vercel_json": {
+      "path": "phase-3/app/vercel.json",
+      "present": true,
+      "sha256": "e8649cb402c08ef6d27302b028ff0a9b2fb3fee1754910ca747aef93ee9df9cc",
+      "gzip_header_rule": true
+    },
+    "next_config": {
+      "path": "phase-3/app/next.config.ts",
+      "present": true,
+      "sets_gzip_headers": true
+    },
+    "dist_headers": {
+      "path": "phase-3/app/dist/client/_headers",
+      "present": true,
+      "gzip_rule": true
+    },
+    "required_response_headers": {
+      "Content-Type": "application/gzip",
+      "Content-Encoding": "identity",
+      "Cache-Control": "public, max-age=0, must-revalidate",
+      "X-Content-Type-Options": "nosniff"
+    }
+  },
+  "dry_run_plan": {
+    "note": "Browser-equivalent proof: send Accept-Encoding: gzip, do not pass --compressed. SHA must match dist, not a gunzipped JSON body.",
+    "commands": [
+      "curl -sS -m 60 -D - -o /tmp/w11-app-data.json.gz -H \"Accept-Encoding: gzip\" \"https://harm-lens-nyc.vercel.app/data/app-data.json.gz\" | awk 'BEGIN{IGNORECASE=1} /HTTP\\/|content-type|content-encoding|cache-control|x-matched-path/{print}'",
+      "shasum -a 256 /tmp/w11-app-data.json.gz phase-3/app/dist/client/data/app-data.json.gz",
+      "xxd -l 2 /tmp/w11-app-data.json.gz",
+      "curl -sS -m 60 -D - -o /tmp/w11-corridor-lion26b-v0-eastern-pkwy.json.gz -H \"Accept-Encoding: gzip\" \"https://harm-lens-nyc.vercel.app/data/corridor-lion26b-v0-eastern-pkwy.json.gz\" | awk 'BEGIN{IGNORECASE=1} /HTTP\\/|content-type|content-encoding|cache-control|x-matched-path/{print}'",
+      "shasum -a 256 /tmp/w11-corridor-lion26b-v0-eastern-pkwy.json.gz phase-3/app/dist/client/data/corridor-lion26b-v0-eastern-pkwy.json.gz",
+      "xxd -l 2 /tmp/w11-corridor-lion26b-v0-eastern-pkwy.json.gz",
+      "curl -sS -m 60 -D - -o /tmp/w11-crash-row-who-v1.json.gz -H \"Accept-Encoding: gzip\" \"https://harm-lens-nyc.vercel.app/data/crash-row-who-v1.json.gz\" | awk 'BEGIN{IGNORECASE=1} /HTTP\\/|content-type|content-encoding|cache-control|x-matched-path/{print}'",
+      "shasum -a 256 /tmp/w11-crash-row-who-v1.json.gz phase-3/app/dist/client/data/crash-row-who-v1.json.gz",
+      "xxd -l 2 /tmp/w11-crash-row-who-v1.json.gz",
+      "curl -sS -m 60 -D - -o /tmp/w11-crash-when-v1.json.gz -H \"Accept-Encoding: gzip\" \"https://harm-lens-nyc.vercel.app/data/crash-when-v1.json.gz\" | awk 'BEGIN{IGNORECASE=1} /HTTP\\/|content-type|content-encoding|cache-control|x-matched-path/{print}'",
+      "shasum -a 256 /tmp/w11-crash-when-v1.json.gz phase-3/app/dist/client/data/crash-when-v1.json.gz",
+      "xxd -l 2 /tmp/w11-crash-when-v1.json.gz",
+      "curl -sS -m 60 -D - -o /tmp/w11-p2-5-ui-objects-v1.json.gz -H \"Accept-Encoding: gzip\" \"https://harm-lens-nyc.vercel.app/data/p2-5-ui-objects-v1.json.gz\" | awk 'BEGIN{IGNORECASE=1} /HTTP\\/|content-type|content-encoding|cache-control|x-matched-path/{print}'",
+      "shasum -a 256 /tmp/w11-p2-5-ui-objects-v1.json.gz phase-3/app/dist/client/data/p2-5-ui-objects-v1.json.gz",
+      "xxd -l 2 /tmp/w11-p2-5-ui-objects-v1.json.gz",
+      "curl -sS -m 60 -D - -o /tmp/w11-place-labels.json.gz -H \"Accept-Encoding: gzip\" \"https://harm-lens-nyc.vercel.app/data/place-labels.json.gz\" | awk 'BEGIN{IGNORECASE=1} /HTTP\\/|content-type|content-encoding|cache-control|x-matched-path/{print}'",
+      "shasum -a 256 /tmp/w11-place-labels.json.gz phase-3/app/dist/client/data/place-labels.json.gz",
+      "xxd -l 2 /tmp/w11-place-labels.json.gz",
+      "curl -sS -m 60 -D - -o /tmp/w11-ranked-places.geojson.gz -H \"Accept-Encoding: gzip\" \"https://harm-lens-nyc.vercel.app/data/ranked-places.geojson.gz\" | awk 'BEGIN{IGNORECASE=1} /HTTP\\/|content-type|content-encoding|cache-control|x-matched-path/{print}'",
+      "shasum -a 256 /tmp/w11-ranked-places.geojson.gz phase-3/app/dist/client/data/ranked-places.geojson.gz",
+      "xxd -l 2 /tmp/w11-ranked-places.geojson.gz",
+      "curl -sS -m 60 -D - -o /tmp/w11-situate-1f-index.json.gz -H \"Accept-Encoding: gzip\" \"https://harm-lens-nyc.vercel.app/data/situate-1f-index.json.gz\" | awk 'BEGIN{IGNORECASE=1} /HTTP\\/|content-type|content-encoding|cache-control|x-matched-path/{print}'",
+      "shasum -a 256 /tmp/w11-situate-1f-index.json.gz phase-3/app/dist/client/data/situate-1f-index.json.gz",
+      "xxd -l 2 /tmp/w11-situate-1f-index.json.gz",
+      "curl -sS -m 60 -D - -o /tmp/w11-situate-approach-context-v1.json.gz -H \"Accept-Encoding: gzip\" \"https://harm-lens-nyc.vercel.app/data/situate-approach-context-v1.json.gz\" | awk 'BEGIN{IGNORECASE=1} /HTTP\\/|content-type|content-encoding|cache-control|x-matched-path/{print}'",
+      "shasum -a 256 /tmp/w11-situate-approach-context-v1.json.gz phase-3/app/dist/client/data/situate-approach-context-v1.json.gz",
+      "xxd -l 2 /tmp/w11-situate-approach-context-v1.json.gz",
+      "curl -sS -m 60 -D - -o /tmp/w11-situate-approach-context-wave2-v1.json.gz -H \"Accept-Encoding: gzip\" \"https://harm-lens-nyc.vercel.app/data/situate-approach-context-wave2-v1.json.gz\" | awk 'BEGIN{IGNORECASE=1} /HTTP\\/|content-type|content-encoding|cache-control|x-matched-path/{print}'",
+      "shasum -a 256 /tmp/w11-situate-approach-context-wave2-v1.json.gz phase-3/app/dist/client/data/situate-approach-context-wave2-v1.json.gz",
+      "xxd -l 2 /tmp/w11-situate-approach-context-wave2-v1.json.gz",
+      "curl -sS -m 60 -D - -o /tmp/w11-uncertainty.geojson.gz -H \"Accept-Encoding: gzip\" \"https://harm-lens-nyc.vercel.app/data/uncertainty.geojson.gz\" | awk 'BEGIN{IGNORECASE=1} /HTTP\\/|content-type|content-encoding|cache-control|x-matched-path/{print}'",
+      "shasum -a 256 /tmp/w11-uncertainty.geojson.gz phase-3/app/dist/client/data/uncertainty.geojson.gz",
+      "xxd -l 2 /tmp/w11-uncertainty.geojson.gz"
+    ],
+    "pass_rule": "HTTP 200, gzip magic 1f 8b, sha256 == dist, Content-Type application/gzip or application/octet-stream, Content-Encoding absent or identity (never gzip)."
+  },
+  "files_checked": 11,
+  "checks": [
+    {
+      "file": "app-data.json.gz",
+      "pathname": "/data/app-data.json.gz",
+      "disk": {
+        "path": "phase-3/app/dist/client/data/app-data.json.gz",
+        "bytes": 2125742,
+        "sha256": "7a848a3174e74090709842903ca7d30c85691250cadc2b8d7e564b0641314614",
+        "gzip_magic": true
+      },
+      "host": {
+        "url": "https://harm-lens-nyc.vercel.app/data/app-data.json.gz",
+        "curl_exit": 0,
+        "curl_stderr": null,
+        "http_status": 200,
+        "bytes": 2125742,
+        "sha256": "7a848a3174e74090709842903ca7d30c85691250cadc2b8d7e564b0641314614",
+        "gzip_magic": true,
+        "content_type": "application/gzip",
+        "content_encoding": "identity",
+        "cache_control": "public, max-age=0, must-revalidate",
+        "server": "Vercel",
+        "x_matched_path": null,
+        "x_vercel_cache": "HIT",
+        "verdict": "PASS"
+      }
+    },
+    {
+      "file": "corridor-lion26b-v0-eastern-pkwy.json.gz",
+      "pathname": "/data/corridor-lion26b-v0-eastern-pkwy.json.gz",
+      "disk": {
+        "path": "phase-3/app/dist/client/data/corridor-lion26b-v0-eastern-pkwy.json.gz",
+        "bytes": 4981,
+        "sha256": "3ac2d489e79b6cc43cd6c8bfe04f07b73e055c93f012be5e1ce1a01874b3ae61",
+        "gzip_magic": true
+      },
+      "host": {
+        "url": "https://harm-lens-nyc.vercel.app/data/corridor-lion26b-v0-eastern-pkwy.json.gz",
+        "curl_exit": 0,
+        "curl_stderr": null,
+        "http_status": 200,
+        "bytes": 4981,
+        "sha256": "3ac2d489e79b6cc43cd6c8bfe04f07b73e055c93f012be5e1ce1a01874b3ae61",
+        "gzip_magic": true,
+        "content_type": "application/gzip",
+        "content_encoding": "identity",
+        "cache_control": "public, max-age=0, must-revalidate",
+        "server": "Vercel",
+        "x_matched_path": null,
+        "x_vercel_cache": "HIT",
+        "verdict": "PASS"
+      }
+    },
+    {
+      "file": "crash-row-who-v1.json.gz",
+      "pathname": "/data/crash-row-who-v1.json.gz",
+      "disk": {
+        "path": "phase-3/app/dist/client/data/crash-row-who-v1.json.gz",
+        "bytes": 332946,
+        "sha256": "2dcfe92d713a6ee1f5921d9476d7ec7c5fd2b47456f962e7246c828d0c52e870",
+        "gzip_magic": true
+      },
+      "host": {
+        "url": "https://harm-lens-nyc.vercel.app/data/crash-row-who-v1.json.gz",
+        "curl_exit": 0,
+        "curl_stderr": null,
+        "http_status": 200,
+        "bytes": 332946,
+        "sha256": "2dcfe92d713a6ee1f5921d9476d7ec7c5fd2b47456f962e7246c828d0c52e870",
+        "gzip_magic": true,
+        "content_type": "application/gzip",
+        "content_encoding": "identity",
+        "cache_control": "public, max-age=0, must-revalidate",
+        "server": "Vercel",
+        "x_matched_path": null,
+        "x_vercel_cache": "HIT",
+        "verdict": "PASS"
+      }
+    },
+    {
+      "file": "crash-when-v1.json.gz",
+      "pathname": "/data/crash-when-v1.json.gz",
+      "disk": {
+        "path": "phase-3/app/dist/client/data/crash-when-v1.json.gz",
+        "bytes": 605700,
+        "sha256": "fa47ff55cdca6df709c1ffd031d5bd73fde846027a0ada8dc0106e2941864352",
+        "gzip_magic": true
+      },
+      "host": {
+        "url": "https://harm-lens-nyc.vercel.app/data/crash-when-v1.json.gz",
+        "curl_exit": 0,
+        "curl_stderr": null,
+        "http_status": 200,
+        "bytes": 605700,
+        "sha256": "fa47ff55cdca6df709c1ffd031d5bd73fde846027a0ada8dc0106e2941864352",
+        "gzip_magic": true,
+        "content_type": "application/gzip",
+        "content_encoding": "identity",
+        "cache_control": "public, max-age=0, must-revalidate",
+        "server": "Vercel",
+        "x_matched_path": null,
+        "x_vercel_cache": "HIT",
+        "verdict": "PASS"
+      }
+    },
+    {
+      "file": "p2-5-ui-objects-v1.json.gz",
+      "pathname": "/data/p2-5-ui-objects-v1.json.gz",
+      "disk": {
+        "path": "phase-3/app/dist/client/data/p2-5-ui-objects-v1.json.gz",
+        "bytes": 1663736,
+        "sha256": "b33dcc8a9e21ad88e5798eb772f85ee7157e512de09ce49fdc10394921a7d454",
+        "gzip_magic": true
+      },
+      "host": {
+        "url": "https://harm-lens-nyc.vercel.app/data/p2-5-ui-objects-v1.json.gz",
+        "curl_exit": 0,
+        "curl_stderr": null,
+        "http_status": 200,
+        "bytes": 1663736,
+        "sha256": "b33dcc8a9e21ad88e5798eb772f85ee7157e512de09ce49fdc10394921a7d454",
+        "gzip_magic": true,
+        "content_type": "application/gzip",
+        "content_encoding": "identity",
+        "cache_control": "public, max-age=0, must-revalidate",
+        "server": "Vercel",
+        "x_matched_path": null,
+        "x_vercel_cache": "HIT",
+        "verdict": "PASS"
+      }
+    },
+    {
+      "file": "place-labels.json.gz",
+      "pathname": "/data/place-labels.json.gz",
+      "disk": {
+        "path": "phase-3/app/dist/client/data/place-labels.json.gz",
+        "bytes": 468860,
+        "sha256": "21196fcdd9d89d03092a9f4abb8572e060861f0cb828fc2fa731e07adf9032b9",
+        "gzip_magic": true
+      },
+      "host": {
+        "url": "https://harm-lens-nyc.vercel.app/data/place-labels.json.gz",
+        "curl_exit": 0,
+        "curl_stderr": null,
+        "http_status": 200,
+        "bytes": 468860,
+        "sha256": "21196fcdd9d89d03092a9f4abb8572e060861f0cb828fc2fa731e07adf9032b9",
+        "gzip_magic": true,
+        "content_type": "application/gzip",
+        "content_encoding": "identity",
+        "cache_control": "public, max-age=0, must-revalidate",
+        "server": "Vercel",
+        "x_matched_path": null,
+        "x_vercel_cache": "HIT",
+        "verdict": "PASS"
+      }
+    },
+    {
+      "file": "ranked-places.geojson.gz",
+      "pathname": "/data/ranked-places.geojson.gz",
+      "disk": {
+        "path": "phase-3/app/dist/client/data/ranked-places.geojson.gz",
+        "bytes": 746419,
+        "sha256": "56e2e2a3d62d31eb88bdffe434210001554bf658a3eac4a62bb020af5dd27972",
+        "gzip_magic": true
+      },
+      "host": {
+        "url": "https://harm-lens-nyc.vercel.app/data/ranked-places.geojson.gz",
+        "curl_exit": 0,
+        "curl_stderr": null,
+        "http_status": 200,
+        "bytes": 746419,
+        "sha256": "56e2e2a3d62d31eb88bdffe434210001554bf658a3eac4a62bb020af5dd27972",
+        "gzip_magic": true,
+        "content_type": "application/gzip",
+        "content_encoding": "identity",
+        "cache_control": "public, max-age=0, must-revalidate",
+        "server": "Vercel",
+        "x_matched_path": null,
+        "x_vercel_cache": "HIT",
+        "verdict": "PASS"
+      }
+    },
+    {
+      "file": "situate-1f-index.json.gz",
+      "pathname": "/data/situate-1f-index.json.gz",
+      "disk": {
+        "path": "phase-3/app/dist/client/data/situate-1f-index.json.gz",
+        "bytes": 1649084,
+        "sha256": "4d9d51ff8d5ba8011ade86bd37c262c0bca5a7cb0dcf28f2d93c75af49416d8f",
+        "gzip_magic": true
+      },
+      "host": {
+        "url": "https://harm-lens-nyc.vercel.app/data/situate-1f-index.json.gz",
+        "curl_exit": 0,
+        "curl_stderr": null,
+        "http_status": 200,
+        "bytes": 1649084,
+        "sha256": "4d9d51ff8d5ba8011ade86bd37c262c0bca5a7cb0dcf28f2d93c75af49416d8f",
+        "gzip_magic": true,
+        "content_type": "application/gzip",
+        "content_encoding": "identity",
+        "cache_control": "public, max-age=0, must-revalidate",
+        "server": "Vercel",
+        "x_matched_path": null,
+        "x_vercel_cache": "HIT",
+        "verdict": "PASS"
+      }
+    },
+    {
+      "file": "situate-approach-context-v1.json.gz",
+      "pathname": "/data/situate-approach-context-v1.json.gz",
+      "disk": {
+        "path": "phase-3/app/dist/client/data/situate-approach-context-v1.json.gz",
+        "bytes": 29334039,
+        "sha256": "b86e702c5c9de6bc7e14e08f876c77220e27d6d6b7d6c95dfff8c88f0a4f3ba9",
+        "gzip_magic": true
+      },
+      "host": {
+        "url": "https://harm-lens-nyc.vercel.app/data/situate-approach-context-v1.json.gz",
+        "curl_exit": 0,
+        "curl_stderr": null,
+        "http_status": 200,
+        "bytes": 29334039,
+        "sha256": "b86e702c5c9de6bc7e14e08f876c77220e27d6d6b7d6c95dfff8c88f0a4f3ba9",
+        "gzip_magic": true,
+        "content_type": "application/gzip",
+        "content_encoding": "identity",
+        "cache_control": "public, max-age=0, must-revalidate",
+        "server": "Vercel",
+        "x_matched_path": null,
+        "x_vercel_cache": "HIT",
+        "verdict": "PASS"
+      }
+    },
+    {
+      "file": "situate-approach-context-wave2-v1.json.gz",
+      "pathname": "/data/situate-approach-context-wave2-v1.json.gz",
+      "disk": {
+        "path": "phase-3/app/dist/client/data/situate-approach-context-wave2-v1.json.gz",
+        "bytes": 35931936,
+        "sha256": "5dc43770ffb74d5d676bda73e0a0c754fe92f2146ffc1c92fdedccad762e4ddf",
+        "gzip_magic": true
+      },
+      "host": {
+        "url": "https://harm-lens-nyc.vercel.app/data/situate-approach-context-wave2-v1.json.gz",
+        "curl_exit": 0,
+        "curl_stderr": null,
+        "http_status": 200,
+        "bytes": 35931936,
+        "sha256": "5dc43770ffb74d5d676bda73e0a0c754fe92f2146ffc1c92fdedccad762e4ddf",
+        "gzip_magic": true,
+        "content_type": "application/gzip",
+        "content_encoding": "identity",
+        "cache_control": "public, max-age=0, must-revalidate",
+        "server": "Vercel",
+        "x_matched_path": null,
+        "x_vercel_cache": "HIT",
+        "verdict": "PASS"
+      }
+    },
+    {
+      "file": "uncertainty.geojson.gz",
+      "pathname": "/data/uncertainty.geojson.gz",
+      "disk": {
+        "path": "phase-3/app/dist/client/data/uncertainty.geojson.gz",
+        "bytes": 1093166,
+        "sha256": "a64edd932ce3abdd78eea74a7fa9dde880000ced374b841520f6906109ad5137",
+        "gzip_magic": true
+      },
+      "host": {
+        "url": "https://harm-lens-nyc.vercel.app/data/uncertainty.geojson.gz",
+        "curl_exit": 0,
+        "curl_stderr": null,
+        "http_status": 200,
+        "bytes": 1093166,
+        "sha256": "a64edd932ce3abdd78eea74a7fa9dde880000ced374b841520f6906109ad5137",
+        "gzip_magic": true,
+        "content_type": "application/gzip",
+        "content_encoding": "identity",
+        "cache_control": "public, max-age=0, must-revalidate",
+        "server": "Vercel",
+        "x_matched_path": null,
+        "x_vercel_cache": "HIT",
+        "verdict": "PASS"
+      }
+    }
+  ],
+  "remaining_blocker": null,
+  "still_true_after_w11_host_pass": {
+    "step_e": "AUTHORIZED PRODUCTION REDEPLOY",
+    "vinext_start_3011": "still 404s /data/*.gz",
+    "product_production": "https://harm-lens-nyc.vercel.app is the explicitly authorized redeploy target",
+    "not_a_cutover": false
+  }
+}
