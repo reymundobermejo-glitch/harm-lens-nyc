@@ -12,6 +12,8 @@
 
 **GitHub:** https://github.com/reymundobermejo-glitch/harm-lens-nyc (existing repo only; no new repo)
 
+**Source commit:** `da8c004` — *Ship local PASS stack to production history.*
+
 Authorization used (verbatim intent): strong-only production redeploy of the current `phase-3/app` local PASS stack (shell + client + byte-identical `public/data/*.gz` including additive crash-when / crash-row-who / Eastern Parkway corridor overlay + `vercel.json` gzip identity headers) onto `https://harm-lens-nyc.vercel.app`. Include Track I local surface, P1.1 Meeting Carry, I2.2, Legend v1.2, I0 remainder, P4 UI, P3.1 UI, and P5 share. Do **not** ship the 3012 wrapper. Do **not** ship G2/LLM. Do **not** freeze P6 FOIL sources. Do **not** cut over a newer crash feed (product freeze stays **2026-06-11 / maintenance**). Do **not** mutate the nine original frozen gz bytes or invent Yes/No/Plan.
 
 ## What shipped
