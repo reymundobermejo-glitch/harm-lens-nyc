@@ -1,0 +1,120 @@
+{
+  "phase": "pre-alias",
+  "deployment_id": "dpl_irdDgDkSYoFSnmVX9yoYBw1Ad73Z",
+  "deployment_url": "https://harm-lens-78bp66k41-reymundobermejo-5871s-projects.vercel.app",
+  "pass": 11,
+  "fail": 0,
+  "decision": "PASS",
+  "checks": [
+    {
+      "file": "app-data.json.gz",
+      "http": 200,
+      "sha": "7a848a3174e74090709842903ca7d30c85691250cadc2b8d7e564b0641314614",
+      "sha_ok": true,
+      "magic": "1f8b",
+      "content_type": "application/gzip",
+      "content_encoding": "identity",
+      "verdict": "PASS"
+    },
+    {
+      "file": "place-labels.json.gz",
+      "http": 200,
+      "sha": "21196fcdd9d89d03092a9f4abb8572e060861f0cb828fc2fa731e07adf9032b9",
+      "sha_ok": true,
+      "magic": "1f8b",
+      "content_type": "application/gzip",
+      "content_encoding": "identity",
+      "verdict": "PASS"
+    },
+    {
+      "file": "ranked-places.geojson.gz",
+      "http": 200,
+      "sha": "56e2e2a3d62d31eb88bdffe434210001554bf658a3eac4a62bb020af5dd27972",
+      "sha_ok": true,
+      "magic": "1f8b",
+      "content_type": "application/gzip",
+      "content_encoding": "identity",
+      "verdict": "PASS"
+    },
+    {
+      "file": "situate-1f-index.json.gz",
+      "http": 200,
+      "sha": "4d9d51ff8d5ba8011ade86bd37c262c0bca5a7cb0dcf28f2d93c75af49416d8f",
+      "sha_ok": true,
+      "magic": "1f8b",
+      "content_type": "application/gzip",
+      "content_encoding": "identity",
+      "verdict": "PASS"
+    },
+    {
+      "file": "situate-approach-context-v1.json.gz",
+      "http": 200,
+      "sha": "b86e702c5c9de6bc7e14e08f876c77220e27d6d6b7d6c95dfff8c88f0a4f3ba9",
+      "sha_ok": true,
+      "magic": "1f8b",
+      "content_type": "application/gzip",
+      "content_encoding": "identity",
+      "verdict": "PASS"
+    },
+    {
+      "file": "situate-approach-context-wave2-v1.json.gz",
+      "http": 200,
+      "sha": "5dc43770ffb74d5d676bda73e0a0c754fe92f2146ffc1c92fdedccad762e4ddf",
+      "sha_ok": true,
+      "magic": "1f8b",
+      "content_type": "application/gzip",
+      "content_encoding": "identity",
+      "verdict": "PASS"
+    },
+    {
+      "file": "uncertainty.geojson.gz",
+      "http": 200,
+      "sha": "a64edd932ce3abdd78eea74a7fa9dde880000ced374b841520f6906109ad5137",
+      "sha_ok": true,
+      "magic": "1f8b",
+      "content_type": "application/gzip",
+      "content_encoding": "identity",
+      "verdict": "PASS"
+    },
+    {
+      "file": "p2-5-ui-objects-v1.json.gz",
+      "http": 200,
+      "sha": "b33dcc8a9e21ad88e5798eb772f85ee7157e512de09ce49fdc10394921a7d454",
+      "sha_ok": true,
+      "magic": "1f8b",
+      "content_type": "application/gzip",
+      "content_encoding": "identity",
+      "verdict": "PASS"
+    },
+    {
+      "file": "crash-when-v1.json.gz",
+      "http": 200,
+      "sha": "fa47ff55cdca6df709c1ffd031d5bd73fde846027a0ada8dc0106e2941864352",
+      "sha_ok": true,
+      "magic": "1f8b",
+      "content_type": "application/gzip",
+      "content_encoding": "identity",
+      "verdict": "PASS"
+    },
+    {
+      "file": "crash-row-who-v1.json.gz",
+      "http": 200,
+      "sha": "2dcfe92d713a6ee1f5921d9476d7ec7c5fd2b47456f962e7246c828d0c52e870",
+      "sha_ok": true,
+      "magic": "1f8b",
+      "content_type": "application/gzip",
+      "content_encoding": "identity",
+      "verdict": "PASS"
+    },
+    {
+      "file": "corridor-lion26b-v0-eastern-pkwy.json.gz",
+      "http": 200,
+      "sha": "3ac2d489e79b6cc43cd6c8bfe04f07b73e055c93f012be5e1ce1a01874b3ae61",
+      "sha_ok": true,
+      "magic": "1f8b",
+      "content_type": "application/gzip",
+      "content_encoding": "identity",
+      "verdict": "PASS"
+    }
+  ]
+}
