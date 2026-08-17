@@ -199,6 +199,9 @@ export type PlannerJobOk = {
   missing?: Record<string, unknown> | null;
   hours?: Record<string, unknown> | null;
   walk?: readonly { tab: string; caption: string }[] | null;
+  coachCopy?: string | null;
+  stepCopy?: string | null;
+  nextScreen?: string | null;
   dataThrough: string | null;
   sourceStatus?: string | null;
   honesty: string;
@@ -244,6 +247,42 @@ export declare function setCrashYear(raw: unknown): ToolResult;
 export declare function openCompare(raw?: unknown, session?: Record<string, unknown>): ToolResult;
 export declare function composeWhyPlace(raw?: unknown, session?: Record<string, unknown>): ToolResult;
 export declare function isSelectedPlacePronoun(value: string): boolean;
+
+export declare const ASK_LEGEND_JOB_COACH: "job-coach-v1";
+export declare const ASK_LEGEND_JOB_COACH_HONESTY: "Legend moves this workspace — frozen evidence only; not official priority.";
+export declare const LIST_ORDER_NOT_DANGEROUS: "This is list order under the lock, not most-dangerous.";
+export declare const JOB_COACH_TOOLS: readonly string[];
+export declare function lockPhrase(lock: { roadUser: string; windowKey: string; lens: string; grain: string }): string;
+export declare function resolveCoachLock(state?: Record<string, unknown>): {
+  unset: boolean;
+  roadUser: LegendSessionBag["roadUser"];
+  windowKey: LegendSessionBag["windowKey"];
+  lens: AskLegendLens;
+  grain: AskLegendPlaceType;
+};
+export declare function boroughOfLonLat(lon: number, lat: number): "Manhattan" | "Brooklyn" | "Queens" | "Bronx" | "Staten Island" | null;
+export declare function normalizeBoroughName(raw: unknown): "Manhattan" | "Brooklyn" | "Queens" | "Bronx" | "Staten Island" | null;
+export declare function startCoachJob(raw?: Record<string, unknown>): ToolResult;
+export declare function selectTopInBorough(
+  raw?: unknown,
+  ctx?: Record<string, unknown>,
+  lock?: Record<string, unknown>,
+): ToolResult;
+export declare function parseCoachJob(
+  utterance: string,
+  sessionState?: Record<string, unknown>,
+  ctx?: Record<string, unknown>,
+): { ok: boolean; refused?: boolean; job?: string; understood?: string; calls?: ToolResult[]; reason?: string } | null;
+export declare function parsePlannerJobV11(
+  utterance: string,
+  sessionState?: Record<string, unknown>,
+  ctx?: Record<string, unknown>,
+): { ok: boolean; refused?: boolean; job?: string; understood?: string; calls?: ToolResult[]; reason?: string };
+export declare function runPlannerJobV11(
+  utterance: string,
+  sessionState?: Record<string, unknown>,
+  ctx?: Record<string, unknown>,
+): PlannerJobOk | PlannerJobRefuse;
 
 export declare const ASK_LEGEND_TOOLKIT_V11: "toolkit-v1.1";
 export declare const WALK_THROUGH_STEPS: readonly { tab: string; caption: string }[];

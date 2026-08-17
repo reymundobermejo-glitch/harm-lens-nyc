@@ -28,6 +28,7 @@ import {
 import {
   ASK_LEGEND_SUBTITLE,
   ASK_LEGEND_TASK_HONESTY,
+  ASK_LEGEND_JOB_COACH_HONESTY,
   applyChip,
   buildSearchUniverse,
   buildSituateFilterIndexFromYesMap,
@@ -1981,6 +1982,8 @@ export default function Home() {
     challenge?: { supports: string; weakens: string; unknowns: string; strongest: string };
     missing?: { items: string[]; never: string };
     hours?: { buckets: { hour: number; count: number }[]; unknown: number; total: number; prohibition: string };
+    coachCopy?: string;
+    nextScreen?: string;
   } | null>(null);
   const [focusLegendTask, setFocusLegendTask] = useState(false);
   const legendTaskRef = useRef<HTMLInputElement>(null);
@@ -2733,6 +2736,18 @@ export default function Home() {
     event.preventDefault();
     const text = legendTask.trim();
     if (!text) return;
+    const rankedPlaces = (p25 ? eligiblePlaces : []).map((place) => ({
+      id: place.id,
+      placeType: place.placeType,
+      placeId: place.placeId,
+      longitude: place.longitude,
+      latitude: place.latitude,
+      injuryRank: place.injuryRank,
+      fatalRank: place.fatalRank,
+      injuryCount: activeP25Count(p25, place.id, windowKey, roadUser, "injury"),
+      fatalCount: activeP25Count(p25, place.id, windowKey, roadUser, "fatal"),
+      count: activeP25Count(p25, place.id, windowKey, roadUser, lens),
+    }));
     const result = runPlannerJob(text, {
       screen,
       selectedId,
@@ -2752,6 +2767,7 @@ export default function Home() {
     }, {
       universe: askLegendUniverse,
       allowedPlaceIds: data.places.map((place) => place.id),
+      rankedPlaces,
       injuryCount: selectedInjuryCount,
       fatalCount: selectedFatalCount,
       compareLockPass,
@@ -2770,6 +2786,8 @@ export default function Home() {
       });
       return;
     }
+    let nextRoadUser = roadUser;
+    let nextWindowKey = windowKey;
     for (const call of result.tools) {
       const args = call.args;
       switch (call.tool) {
@@ -2777,10 +2795,13 @@ export default function Home() {
           if (typeof args.placeId === "string") selectPlace(args.placeId);
           break;
         case "setLens":
-          if (args.lens === "injury" || args.lens === "fatal") setLens(args.lens);
+          if (args.lens === "injury" || args.lens === "fatal") {
+            setLens(args.lens);
+          }
           break;
         case "setRoadUser":
           if (args.roadUser === "everyone" || args.roadUser === "pedestrian" || args.roadUser === "cyclist" || args.roadUser === "motorist") {
+            nextRoadUser = args.roadUser;
             setRoadUser(args.roadUser);
             setAgreementFilter("all");
             setFocusGroup(null);
@@ -2788,10 +2809,23 @@ export default function Home() {
           break;
         case "setWindow":
           if (args.windowKey === "24m" || args.windowKey === "36m" || args.windowKey === "48m") {
+            nextWindowKey = args.windowKey;
             setWindowKey(args.windowKey);
             setShowToll(args.windowKey === "36m" ? showToll : false);
             setAgreementFilter("all");
             setFocusGroup(null);
+          }
+          break;
+        case "setMode":
+          if (args.mode === "intersection_node" || args.mode === "midblock_segment") {
+            setMode(args.mode);
+            setAgreementFilter("all");
+            setCompareMode(false);
+            setCompareIds([]);
+            setCompareMethodLock(null);
+            setCompareOpen(false);
+            setFocusGroup(null);
+            setMapLookBorough(null);
           }
           break;
         case "openInspect":
@@ -2805,10 +2839,19 @@ export default function Home() {
             setScreen("inspect");
           }
           break;
-        case "openCompare":
+        case "openCompare": {
+          const ids = Array.isArray(args.compareIds) ? args.compareIds.filter((id): id is string => typeof id === "string" && Boolean(id)) : [];
+          if (ids.length === 2) {
+            setCompareIds(ids);
+            setCompareMode(true);
+            setPacketSubjectId(ids[0]);
+            setSelectedId(ids[0]);
+            setCompareMethodLock({ roadUser: nextRoadUser, window: nextWindowKey });
+          }
           setCompareOpen(true);
           setScreen("compare");
           break;
+        }
         case "composeWhyPlace":
           setScreen("inspect");
           setTab("why");
@@ -2847,6 +2890,9 @@ export default function Home() {
           setScreen("inspect");
           setTab("records");
           break;
+        case "startCoachJob":
+        case "selectTopInBorough":
+          break;
         default:
           break;
       }
@@ -2854,10 +2900,11 @@ export default function Home() {
     if (result.challenge) setLegendDeliverable({ kind: "challenge", challenge: result.challenge as { supports: string; weakens: string; unknowns: string; strongest: string } });
     else if (result.missing) setLegendDeliverable({ kind: "missing", missing: result.missing as { items: string[]; never: string } });
     else if (result.hours) setLegendDeliverable({ kind: "hours", hours: result.hours as { buckets: { hour: number; count: number }[]; unknown: number; total: number; prohibition: string } });
+    else if (result.coachCopy) setLegendDeliverable({ kind: "coach", coachCopy: result.coachCopy, nextScreen: result.nextScreen ?? undefined });
     else if (!result.walk) setLegendDeliverable(null);
     setLegendTrace({
       ok: true,
-      text: `Job understood: ${result.understood} · Tools: ${result.toolNames.join(", ")} · Records through ${formatDateLong(data.meta.analysisEnd)}`,
+      text: `Job understood: ${result.understood} · Tools: ${result.toolNames.join(", ")} · Records through ${formatDateLong(data.meta.analysisEnd)}${result.nextScreen ? ` · Next: ${result.nextScreen}` : ""}`,
       tools: result.toolNames,
     });
   };
@@ -2923,6 +2970,11 @@ export default function Home() {
           <p>Still needed for a stronger claim (unknown — not untreated):</p>
           <ul>{legendDeliverable.missing.items.map((item) => <li key={item}>{item}</li>)}</ul>
           <p>{legendDeliverable.missing.never}</p>
+        </div>}
+        {legendDeliverable?.kind === "coach" && legendDeliverable.coachCopy && <div className="legend-task-deliverable" data-testid="legend-task-deliverable">
+          <p>{ASK_LEGEND_JOB_COACH_HONESTY}</p>
+          <p>{legendDeliverable.coachCopy}</p>
+          {legendDeliverable.nextScreen && <p data-testid="legend-next-screen">Next screen: {legendDeliverable.nextScreen}</p>}
         </div>}
         {legendDeliverable?.kind === "hours" && legendDeliverable.hours && <div className="legend-task-deliverable" data-testid="legend-task-deliverable">
           <p>Observed hour of crash_time on supporting IDs <small>source_fact</small></p>
@@ -3009,8 +3061,8 @@ export default function Home() {
                 ))}
               </div>
               <div className="documented-chip-details">
-                <span className="ask-legend-chip-label">Documented Yes</span>
-                <div className="ask-legend-chip-row" role="group" aria-label="Ask Legend documented Yes filters">
+                <span className="ask-legend-chip-label">Published in this source</span>
+                <div className="ask-legend-chip-row" role="group" aria-label="Ask Legend published-source filters">
                   {ASK_LEGEND_G1B_CHIPS.map((chip) => (
                     <button
                       key={chip.id}
@@ -3018,7 +3070,7 @@ export default function Home() {
                       className={activeChipId === chip.id ? "active" : ""}
                       data-testid={`ask-chip-${chip.id}`}
                       disabled={situateYesLoading}
-                      title="Documented Yes only — never untreated or No"
+                      title="Published frozen records only — never untreated, No, or Plan"
                       onClick={() => { void applyAskLegendChip(chip.id); }}
                     >
                       {chip.label}
@@ -3029,9 +3081,9 @@ export default function Home() {
               {(askHonesty || situateYesLoading || situateYesError) && (
                 <p className="ask-legend-honesty" data-testid="ask-legend-honesty" aria-live="polite">
                   {situateYesLoading
-                    ? "Loading frozen Situate Yes index…"
+                    ? "Loading frozen published-record index…"
                     : situateYesError
-                      ? "Frozen Situate Yes filter unavailable. Browse ranked places or search labels."
+                      ? "Frozen published-record filter unavailable. Browse ranked places or search labels."
                       : askHonesty
                         ? `${askHonesty.label} · ${askHonesty.tool}${askHonesty.matchCount == null ? "" : ` · ${formatNumber(askHonesty.matchCount)} places`}`
                         : null}
@@ -3326,8 +3378,8 @@ export default function Home() {
 
             {tab === "situate" && (
               <div className="tab-content">
-                <p className="tab-purpose"><Layers3 size={14} /><span><strong>Documented street changes and published rules</strong>Official records under frozen match rules—not present-day field proof or crash-date conditions.</span></p>
-                <p className="inspect-lead">What official records say here—not whether a condition exists today or existed on a crash date.</p>
+                <p className="tab-purpose"><Layers3 size={14} /><span><strong>Published street records</strong>Official frozen rows under match rules—not Yes/No/Plan, present-day field proof, or crash-date conditions.</span></p>
+                <p className="inspect-lead">What official records say here—not whether a condition exists today, is absent, or is planned.</p>
                 <section className="situate-spine">
                   <div className="section-row"><div><span className="eyebrow">At a glance</span><h4>{situate ? `${situate.documentedStreetChanges.length} documented change${situate.documentedStreetChanges.length === 1 ? "" : "s"} · ${situate.approaches.length} approach${situate.approaches.length === 1 ? "" : "es"}` : "Loading frozen street context"}</h4></div><span className="claim-chip history">Conditional</span></div>
                   <details className="situate-method-details"><summary>Evidence method</summary><p className="method-copy">Evidence is keyed to this {selected.placeType === "intersection_node" ? "ranked intersection and its separate incident approaches" : "peer midblock segment"} under <code>HL-APPROACH-SITUATE-v1</code> plus the exact-key <code>HL-APPROACH-SITUATE-WAVE2-v1</code> overlay. Context never enters harm counts or ranks.</p>{situateIndex && <div className="situate-totals"><span><strong>{formatNumber(23_528)}</strong> documented rows in the frozen universe</span><span><strong>{formatNumber(586_158)}</strong> network / rule rows</span><span><strong>{formatNumber(143_182)}</strong> unknown rows</span></div>}</details>
@@ -3461,25 +3513,43 @@ export default function Home() {
               <p className="packet-lead">{evidenceBrief.whyThisPlaceSurfaced.statement}</p>
               {evidenceBrief.evidence.windowCounts && <p className="packet-window-counts" data-testid="packet-window-counts">Released window counts under this Who and lens: {evidenceBrief.evidence.windowCounts.map((row) => `${row.windowId} ${row.crashRecordCount}`).join(" · ")}. Disclosure only; not a new rank.</p>}
               <section className="brief-preview-section packet-situate" data-testid="packet-situate">
-                <span className="eyebrow">Known street context · Situate Yes / Unknown</span>
-                {evidenceBrief.knownStreetContext.documentedYes.length
-                  ? evidenceBrief.knownStreetContext.documentedYes.map((item) => <article key={`${item.family}:${item.sourceRecordId}`}><strong>{item.humanLabel}</strong><p>{item.statement}</p></article>)
-                  : <p>Unknown — no established documented relationship appears in the loaded frozen Situate projection.</p>}
-                <h3>Unknown</h3>
-                <ul>{evidenceBrief.knownStreetContext.unknown.map((item) => <li key={`${item.family}:${item.statement}`}>{item.statement}</li>)}</ul>
+                <span className="eyebrow">Street records at this place · not Yes / No / Plan</span>
+                {evidenceBrief.knownStreetContext.publishedAtThisPlace.length
+                  ? evidenceBrief.knownStreetContext.publishedAtThisPlace.map((item) => <article key={`${item.family}:${item.sourceRecordId}`}><strong>{item.humanLabel}</strong><p>{item.statement}</p></article>)
+                  : <p>No published record for this place appears in the loaded frozen Situate projection.</p>}
+                {evidenceBrief.knownStreetContext.checkedNoMatchingRecord.length > 0 && <>
+                  <h3>Checked in a named table</h3>
+                  <ul>{evidenceBrief.knownStreetContext.checkedNoMatchingRecord.map((item) => <li key={`${item.family}:${item.statement}`}>{item.statement}</li>)}</ul>
+                </>}
+                {evidenceBrief.knownStreetContext.notInPublicInventory.length > 0 && <>
+                  <h3>Not in a public place-level inventory</h3>
+                  <ul>{evidenceBrief.knownStreetContext.notInPublicInventory.map((item) => <li key={`${item.family}:${item.statement}`}>{item.statement}</li>)}</ul>
+                </>}
               </section>
               <section className="brief-preview-section packet-date-window" data-testid="packet-date-vs-window">
                 <span className="eyebrow">Documented date vs window · documented_history + calculation</span>
                 {evidenceBrief.documentedDateVsWindow.rows.length
                   ? evidenceBrief.documentedDateVsWindow.rows.map((row) => <article key={`${row.humanLabel}:${row.documentedDate}`}><strong>{row.humanLabel} · {row.documentedDate}</strong><p>{row.statement}</p><small>{row.prohibition}</small></article>)
-                  : <p>No published Documented Yes date is bound to this supporting crash set.</p>}
+                  : <p>No published record date is bound to this supporting crash set.</p>}
               </section>
               <section className="brief-preview-section packet-field-request" data-testid="packet-field-request">
                 <span className="eyebrow">Recommended next action · field request</span>
                 <p>{evidenceBrief.recommendedNextAction.statement}</p>
                 <ul>{evidenceBrief.recommendedNextAction.investigate.map((item) => <li key={item}>{item}</li>)}</ul>
               </section>
-              <section className="brief-preview-section limitation"><span className="eyebrow">Limitations</span><p>Concentration ≠ risk. Records are not people. No cause, official priority, treatment, KSI, or effectiveness claim is made.</p></section>
+              <section className="brief-preview-section limitation" data-testid="packet-limitations">
+                <span className="eyebrow">Limitations</span>
+                <p>Concentration ≠ risk. Records are not people. No cause, official priority, treatment, KSI, or effectiveness claim is made.</p>
+                <div className="packet-coverage-footnotes" data-testid="packet-coverage-footnotes">
+                  <strong>{evidenceBrief.dataCurrency.coverageFootnotes.heading}</strong>
+                  <ul>
+                    {evidenceBrief.dataCurrency.coverageFootnotes.items.map((item) => (
+                      <li key={item.id}><p>{item.statement}</p><small>{item.cannotSupport}</small></li>
+                    ))}
+                  </ul>
+                  <small>{evidenceBrief.dataCurrency.coverageFootnotes.freezeVersion} · probe {evidenceBrief.dataCurrency.coverageFootnotes.probeUtc}</small>
+                </div>
+              </section>
               <p className="packet-freshness" data-testid="packet-freshness">{evidenceBrief.dataCurrency.statement}</p>
               <div className="brief-actions"><button className="primary-button" onClick={() => downloadEvidenceBrief("html")}><ArrowDownToLine size={16} />Download DRAFT brief (.html)</button><button className="text-button" onClick={() => downloadEvidenceBrief("json")}><Database size={14} />Download claim-class JSON</button></div>
               {packet && <div className="sample-lep-preserved"><strong>Existing frozen DRAFT Location Evidence Packet</strong><p>A frozen DRAFT packet exists for four sample places only. This sample download stays separate from the any-place Evidence Brief.</p><button className="text-button" onClick={downloadPacket}><ArrowDownToLine size={14} />Download DRAFT LEP (frozen sample)</button></div>}

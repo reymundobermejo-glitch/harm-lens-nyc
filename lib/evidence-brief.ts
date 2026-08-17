@@ -1,4 +1,5 @@
 import { dateVsWindowRow, FIELD_REQUEST_ITEMS as FIELD_REQUEST_FROM_CARRY } from "./packet-carry.mjs";
+import { coverageFootnotesBlock } from "./p6-coverage-footnotes.mjs";
 
 export { classifyCrashesVsDocumentedDate, isoDatePrefix, lockOnChipModel, resolvePacketSubject } from "./packet-carry.mjs";
 export const FIELD_REQUEST_ITEMS = FIELD_REQUEST_FROM_CARRY;
@@ -85,6 +86,9 @@ export type EvidenceBrief = {
   knownStreetContext: {
     status: "documented_and_unknown" | "documented" | "unknown";
     documentedYes: (BriefSituateRecord & { claimClassPreserved: string })[];
+    publishedAtThisPlace: (BriefSituateRecord & { claimClassPreserved: string })[];
+    checkedNoMatchingRecord: { family: string; statement: string; claimClass: "unknown"; approachKey?: string | null; segmentId?: number | null }[];
+    notInPublicInventory: { family: string; statement: string; claimClass: "unknown" }[];
     unknown: { family: string; statement: string; claimClass: "unknown"; approachKey?: string | null; segmentId?: number | null }[];
   };
   documentedDateVsWindow: {
@@ -97,6 +101,13 @@ export type EvidenceBrief = {
     statement: string;
     sourceStatus: string;
     throughDate: string;
+    coverageFootnotes: {
+      claimClass: "source_fact";
+      freezeVersion: string;
+      probeUtc: string;
+      heading: string;
+      items: { id: string; statement: string; cannotSupport: string }[];
+    };
   };
   limitations: { claimClass: "unsupported"; statements: string[] };
   recommendedNextAction: { claimClass: "unknown"; statement: string; investigate: string[] };
@@ -204,7 +215,7 @@ export function composeEvidenceBrief(args: ComposeArgs): EvidenceBrief {
       record.family !== "speed_limits" || (record as BriefSituateRecord & { speedClaimEligible?: boolean }).speedClaimEligible === true
     ))),
   ]).map((record) => ({ ...record, claimClassPreserved: record.claimClass }));
-  const unknown = uniqueUnknowns([
+  const checkedNoMatchingRecord = uniqueUnknowns([
     ...args.situate.unknownEvidence.map((record) => ({
       family: record.family,
       statement: record.statement,
@@ -219,7 +230,15 @@ export function composeEvidenceBrief(args: ComposeArgs): EvidenceBrief {
       approachKey: approach.approachKey,
       segmentId: approach.segmentId,
     }))),
-    ...args.situate.permanentGaps.map((gap) => ({ family: gap.domain, statement: gap.statement, claimClass: "unknown" as const })),
+  ]);
+  const notInPublicInventory = args.situate.permanentGaps.map((gap) => ({
+    family: gap.domain,
+    statement: gap.statement,
+    claimClass: "unknown" as const,
+  }));
+  const unknown = uniqueUnknowns([
+    ...checkedNoMatchingRecord,
+    ...notInPublicInventory,
   ]);
   const dateVsWindow = documentedDateVsWindowRows(documented, args.supportingCrashDates ?? []);
 
@@ -266,6 +285,9 @@ export function composeEvidenceBrief(args: ComposeArgs): EvidenceBrief {
     knownStreetContext: {
       status: documented.length && unknown.length ? "documented_and_unknown" : documented.length ? "documented" : "unknown",
       documentedYes: documented,
+      publishedAtThisPlace: documented,
+      checkedNoMatchingRecord,
+      notInPublicInventory,
       unknown: unknown.length ? unknown : [{ family: "governed_sources", statement: "No additional unknown relationship row was recorded in the loaded frozen Situate projection.", claimClass: "unknown" }],
     },
     documentedDateVsWindow: {
@@ -278,6 +300,7 @@ export function composeEvidenceBrief(args: ComposeArgs): EvidenceBrief {
       statement: `Collision records through ${args.method.analysisEnd}; source status: ${args.method.sourceStatus}. Recent periods may backfill or revise.`,
       sourceStatus: args.method.sourceStatus,
       throughDate: args.method.analysisEnd,
+      coverageFootnotes: coverageFootnotesBlock(),
     },
     limitations: { claimClass: "unsupported", statements: [...LIMITATIONS] },
     recommendedNextAction: {
@@ -302,10 +325,15 @@ function rows(items: string[]) {
 }
 
 export function evidenceBriefHtml(brief: EvidenceBrief) {
-  const documented = brief.knownStreetContext.documentedYes.length
-    ? brief.knownStreetContext.documentedYes.map((item) => `<article><strong>${escapeHtml(item.humanLabel)}</strong><p>${escapeHtml(item.statement)}</p><small>Claim: ${escapeHtml(item.claimClassPreserved)} · ${escapeHtml(item.sourceDatasetName)} · record ${escapeHtml(item.sourceRecordId)} · ${escapeHtml(item.matchVersion)}</small></article>`).join("")
-    : "<p>Unknown — no established documented relationship appears in the loaded frozen Situate projection.</p>";
-  const unknown = brief.knownStreetContext.unknown.map((item) => `<li>${escapeHtml(item.statement)} <small>(${escapeHtml(item.family)})</small></li>`).join("");
+  const published = brief.knownStreetContext.publishedAtThisPlace.length
+    ? brief.knownStreetContext.publishedAtThisPlace.map((item) => `<article><strong>${escapeHtml(item.humanLabel)}</strong><p>${escapeHtml(item.statement)}</p><small>Claim: ${escapeHtml(item.claimClassPreserved)} · ${escapeHtml(item.sourceDatasetName)} · record ${escapeHtml(item.sourceRecordId)} · ${escapeHtml(item.matchVersion)}</small></article>`).join("")
+    : "<p>No published record for this place appears in the loaded frozen Situate projection.</p>";
+  const checked = brief.knownStreetContext.checkedNoMatchingRecord.length
+    ? `<h3>Checked in a named table</h3><ul>${brief.knownStreetContext.checkedNoMatchingRecord.map((item) => `<li>${escapeHtml(item.statement)} <small>(${escapeHtml(item.family)})</small></li>`).join("")}</ul>`
+    : "";
+  const inventory = brief.knownStreetContext.notInPublicInventory.length
+    ? `<h3>Not in a public place-level inventory</h3><ul>${brief.knownStreetContext.notInPublicInventory.map((item) => `<li>${escapeHtml(item.statement)} <small>(${escapeHtml(item.family)})</small></li>`).join("")}</ul>`
+    : "";
   const optionalEvidence = [
     brief.evidence.humanToll ? `<article><strong>${escapeHtml(brief.evidence.humanToll.peopleRecordedTotal)} ${escapeHtml(brief.evidence.humanToll.label)}</strong><p>Shown beside crash frequency, never instead of it. ${escapeHtml(brief.evidence.humanToll.disclosure)}</p></article>` : "",
     brief.evidence.persistence ? `<article><strong>Persistence sensitivity</strong><p>${escapeHtml(brief.evidence.persistence.statement)}</p><small>${escapeHtml(brief.evidence.persistence.claimLimit)}</small></article>` : "",
@@ -314,6 +342,8 @@ export function evidenceBriefHtml(brief: EvidenceBrief) {
   ].join("");
   const dateVsWindow = brief.documentedDateVsWindow.rows.length
     ? brief.documentedDateVsWindow.rows.map((row) => `<article><strong>${escapeHtml(row.humanLabel)} · ${escapeHtml(row.documentedDate)}</strong><p>${escapeHtml(row.statement)}</p><small>Claim: documented_history + calculation · membership ${escapeHtml(row.membership)} · ${escapeHtml(row.prohibition)}</small></article>`).join("")
-    : "<p>No published Documented Yes date is bound to this supporting crash set.</p>";
-  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>DRAFT Evidence Brief — ${escapeHtml(brief.place.title)}</title><style>body{font:15px/1.5 system-ui,sans-serif;color:#17211f;max-width:850px;margin:36px auto;padding:0 24px}header{border-bottom:3px solid #17211f;padding-bottom:18px}.draft{display:inline-block;background:#f2c94c;padding:5px 9px;font-weight:800;letter-spacing:.12em}h1{margin:.4rem 0}.meta{color:#52605d}section{margin:28px 0}h2{font-size:18px;border-bottom:1px solid #ccd5d2;padding-bottom:6px}article{border-left:3px solid #79918a;padding:4px 12px;margin:12px 0}small{color:#596763}.counts{display:flex;gap:14px}.count{border:1px solid #bdc9c5;padding:12px 16px;min-width:180px}.count b{display:block;font-size:28px}.limit{background:#f1f4f3;padding:14px}.next{border:2px solid #4d6a62;padding:14px}@media print{body{margin:0}.no-print{display:none}}</style></head><body><header><span class="draft">DRAFT</span><h1>Evidence Brief</h1><h2>${escapeHtml(brief.place.title)}</h2><p class="meta">${escapeHtml(brief.place.id)} · ${escapeHtml(brief.place.lionLabel)} · ${escapeHtml(brief.place.grain)} · ${escapeHtml(brief.methodLock.harmLens)} lens · ${escapeHtml(brief.methodLock.roadUser)}<br>${escapeHtml(brief.methodLock.analysisStart)}–${escapeHtml(brief.methodLock.analysisEnd)} · ${escapeHtml(brief.place.geographyVersion)}</p></header><section><h2>1. Why this place surfaced <small>[calculation]</small></h2><p>${escapeHtml(brief.whyThisPlaceSurfaced.statement)}</p><p><strong>Supports:</strong> ${escapeHtml(brief.whyThisPlaceSurfaced.supports)}</p><p><strong>Does not support:</strong> ${escapeHtml(brief.whyThisPlaceSurfaced.doesNotSupport)}</p></section><section><h2>2. Evidence <small>[calculation]</small></h2><div class="counts">${brief.evidence.counts.map((item) => `<div class="count"><b>${item.crashRecordCount}</b>${escapeHtml(item.label)}<small>Equality ${brief.evidence.equalityStatus}; ${item.supportingCollisionIds.length} supporting IDs</small></div>`).join("")}</div>${optionalEvidence}</section><section><h2>3. Known street context</h2>${documented}<h3>Unknown</h3><ul>${unknown}</ul></section><section><h2>4. Documented date vs window <small>[documented_history + calculation]</small></h2>${dateVsWindow}</section><section><h2>5. Data currency <small>[source fact]</small></h2><p>${escapeHtml(brief.dataCurrency.statement)}</p></section><section class="limit"><h2>6. Limitations <small>[unsupported]</small></h2><ul>${rows(brief.limitations.statements)}</ul></section><section class="next"><h2>7. Recommended next action <small>[unknown / investigation]</small></h2><p>${escapeHtml(brief.recommendedNextAction.statement)}</p><ul>${rows(brief.recommendedNextAction.investigate)}</ul></section><footer><p><strong>${brief.releaseStatus}</strong> · ${escapeHtml(brief.briefVersion)} · generated ${escapeHtml(brief.generatedAtUtc)}</p><p class="meta">Method: ${escapeHtml(brief.methodLock.windowId)} · ${escapeHtml(brief.methodLock.roadUser)} · ${escapeHtml(brief.methodLock.assignmentVersion)} · ${escapeHtml(brief.methodLock.predicateRegistry)} · ${escapeHtml(brief.methodLock.objectVersion)}</p></footer></body></html>`;
+    : "<p>No published record date is bound to this supporting crash set.</p>";
+  const coverage = brief.dataCurrency.coverageFootnotes;
+  const coverageHtml = `<h3>${escapeHtml(coverage.heading)}</h3><ul>${coverage.items.map((item) => `<li><p>${escapeHtml(item.statement)}</p><small>${escapeHtml(item.cannotSupport)}</small></li>`).join("")}</ul><p class="meta">${escapeHtml(coverage.freezeVersion)} · probe ${escapeHtml(coverage.probeUtc)}</p>`;
+  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>DRAFT Evidence Brief — ${escapeHtml(brief.place.title)}</title><style>body{font:15px/1.5 system-ui,sans-serif;color:#17211f;max-width:850px;margin:36px auto;padding:0 24px}header{border-bottom:3px solid #17211f;padding-bottom:18px}.draft{display:inline-block;background:#f2c94c;padding:5px 9px;font-weight:800;letter-spacing:.12em}h1{margin:.4rem 0}.meta{color:#52605d}section{margin:28px 0}h2{font-size:18px;border-bottom:1px solid #ccd5d2;padding-bottom:6px}article{border-left:3px solid #79918a;padding:4px 12px;margin:12px 0}small{color:#596763}.counts{display:flex;gap:14px}.count{border:1px solid #bdc9c5;padding:12px 16px;min-width:180px}.count b{display:block;font-size:28px}.limit{background:#f1f4f3;padding:14px}.next{border:2px solid #4d6a62;padding:14px}@media print{body{margin:0}.no-print{display:none}}</style></head><body><header><span class="draft">DRAFT</span><h1>Evidence Brief</h1><h2>${escapeHtml(brief.place.title)}</h2><p class="meta">${escapeHtml(brief.place.id)} · ${escapeHtml(brief.place.lionLabel)} · ${escapeHtml(brief.place.grain)} · ${escapeHtml(brief.methodLock.harmLens)} lens · ${escapeHtml(brief.methodLock.roadUser)}<br>${escapeHtml(brief.methodLock.analysisStart)}–${escapeHtml(brief.methodLock.analysisEnd)} · ${escapeHtml(brief.place.geographyVersion)}</p></header><section><h2>1. Why this place surfaced <small>[calculation]</small></h2><p>${escapeHtml(brief.whyThisPlaceSurfaced.statement)}</p><p><strong>Supports:</strong> ${escapeHtml(brief.whyThisPlaceSurfaced.supports)}</p><p><strong>Does not support:</strong> ${escapeHtml(brief.whyThisPlaceSurfaced.doesNotSupport)}</p></section><section><h2>2. Evidence <small>[calculation]</small></h2><div class="counts">${brief.evidence.counts.map((item) => `<div class="count"><b>${item.crashRecordCount}</b>${escapeHtml(item.label)}<small>Equality ${brief.evidence.equalityStatus}; ${item.supportingCollisionIds.length} supporting IDs</small></div>`).join("")}</div>${optionalEvidence}</section><section><h2>3. Street records at this place</h2><p>Published frozen rows — not Yes, No, or Plan.</p>${published}${checked}${inventory}</section><section><h2>4. Documented date vs window <small>[documented_history + calculation]</small></h2>${dateVsWindow}</section><section><h2>5. Data currency <small>[source fact]</small></h2><p>${escapeHtml(brief.dataCurrency.statement)}</p>${coverageHtml}</section><section class="limit"><h2>6. Limitations <small>[unsupported]</small></h2><ul>${rows(brief.limitations.statements)}</ul></section><section class="next"><h2>7. Recommended next action <small>[unknown / investigation]</small></h2><p>${escapeHtml(brief.recommendedNextAction.statement)}</p><ul>${rows(brief.recommendedNextAction.investigate)}</ul></section><footer><p><strong>${brief.releaseStatus}</strong> · ${escapeHtml(brief.briefVersion)} · generated ${escapeHtml(brief.generatedAtUtc)}</p><p class="meta">Method: ${escapeHtml(brief.methodLock.windowId)} · ${escapeHtml(brief.methodLock.roadUser)} · ${escapeHtml(brief.methodLock.assignmentVersion)} · ${escapeHtml(brief.methodLock.predicateRegistry)} · ${escapeHtml(brief.methodLock.objectVersion)}</p></footer></body></html>`;
 }

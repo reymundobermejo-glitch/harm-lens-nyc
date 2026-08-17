@@ -55,3 +55,23 @@ test("lock-on counts follow the active roadUser, not Everyone leftover", () => {
   assert.equal(walking.roadUser, "pedestrian");
   assert.notEqual(walking.injuryCount, everyone.injuryCount);
 });
+
+test("P6.H4 coverage footnotes are citywide source_fact, not a place flag", async () => {
+  const { P6_COVERAGE_FOOTNOTES, P6_H1_COVERAGE_FREEZE_VERSION, P6_H1_PROBE_UTC, coverageFootnotesBlock } = await import("../lib/p6-coverage-footnotes.mjs");
+  assert.equal(P6_H1_COVERAGE_FREEZE_VERSION, "HL-P6-H1-COVERAGE-FREEZE-v1");
+  assert.equal(P6_H1_PROBE_UTC, "2026-08-17T16:11:25Z");
+  assert.equal(P6_COVERAGE_FOOTNOTES.length, 3);
+  const [signals, signs, phases] = P6_COVERAGE_FOOTNOTES;
+  assert.match(signals.statement, /13,543/);
+  assert.match(signals.statement, /March 2022/);
+  assert.match(signals.cannotSupport, /Does not say this intersection is signalized/);
+  assert.match(signals.cannotSupport, /26912/);
+  assert.match(signs.statement, /1,281,256 Current/);
+  assert.match(signs.statement, /13,929,146 Historical/);
+  assert.match(signs.cannotSupport, /Not signs present now/);
+  assert.match(phases.statement, /60 current_phase labels on 56,525 FMS-grain rows/);
+  assert.match(phases.cannotSupport, /Not the six-value Plan enum/);
+  const block = coverageFootnotesBlock();
+  assert.equal(block.claimClass, "source_fact");
+  assert.equal(block.items.length, 3);
+});

@@ -151,7 +151,7 @@ test("Phase 3.3 separates screens and teaches place and tool meaning", async () 
     'Why this place is on the list',
     'Supporting crash records',
     'Whether the signal changes under checks',
-    'Documented street changes and published rules',
+    'Published street records',
     'Place ID &amp; method',
     'We re-checked this place with different time windows.',
     'Incomplete checks are never called stable.',
@@ -625,6 +625,9 @@ test("Ask Legend toolkit task box is wired without an LLM", async () => {
   assert.match(page, /data-testid="packet-date-vs-window"/);
   assert.match(page, /data-testid="packet-field-request"/);
   assert.match(page, /data-testid="packet-situate"/);
+  assert.match(page, /Street records at this place · not Yes \/ No \/ Plan/);
+  assert.match(page, /Published in this source/);
+  assert.doesNotMatch(page, /Situate Yes \/ Unknown/);
   assert.match(page, /resolvePacketSubject/);
   assert.match(css, /\.map-hud-who/);
   assert.match(css, /\.who-lock-row/);
@@ -807,4 +810,53 @@ test("P5 shareable investigation set is a fail-closed URL, not a new gz", async 
   assert.match(page, /NYC_BOUNDS: \[\[number, number\], \[number, number\]\] = \[\[-74\.26, 40\.49\], \[-73\.70, 40\.92\]\]/);
   assert.match(css, /Track P5 — shareable investigation set \(W22\)/);
 });
+
+test("P6.H4 binds citywide coverage footnotes only on Packet limitations and Evidence Brief data-currency", async () => {
+  const frozen = {
+    "app-data.json.gz": "7a848a3174e74090709842903ca7d30c85691250cadc2b8d7e564b0641314614",
+    "place-labels.json.gz": "21196fcdd9d89d03092a9f4abb8572e060861f0cb828fc2fa731e07adf9032b9",
+    "ranked-places.geojson.gz": "56e2e2a3d62d31eb88bdffe434210001554bf658a3eac4a62bb020af5dd27972",
+    "situate-1f-index.json.gz": "4d9d51ff8d5ba8011ade86bd37c262c0bca5a7cb0dcf28f2d93c75af49416d8f",
+    "situate-approach-context-v1.json.gz": "b86e702c5c9de6bc7e14e08f876c77220e27d6d6b7d6c95dfff8c88f0a4f3ba9",
+    "situate-approach-context-wave2-v1.json.gz": "5dc43770ffb74d5d676bda73e0a0c754fe92f2146ffc1c92fdedccad762e4ddf",
+    "uncertainty.geojson.gz": "a64edd932ce3abdd78eea74a7fa9dde880000ced374b841520f6906109ad5137",
+    "p2-5-ui-objects-v1.json.gz": "b33dcc8a9e21ad88e5798eb772f85ee7157e512de09ce49fdc10394921a7d454",
+    "crash-when-v1.json.gz": "fa47ff55cdca6df709c1ffd031d5bd73fde846027a0ada8dc0106e2941864352",
+    "crash-row-who-v1.json.gz": "2dcfe92d713a6ee1f5921d9476d7ec7c5fd2b47456f962e7246c828d0c52e870",
+    "corridor-lion26b-v0-eastern-pkwy.json.gz": "3ac2d489e79b6cc43cd6c8bfe04f07b73e055c93f012be5e1ce1a01874b3ae61",
+  };
+  for (const [name, expected] of Object.entries(frozen)) {
+    const bytes = await readFile(new URL(`public/data/${name}`, appRoot));
+    assert.equal(createHash("sha256").update(bytes).digest("hex"), expected, name);
+  }
+  const [page, brief, chips, p25, situate] = await Promise.all([
+    readFile(new URL("app/page.tsx", appRoot), "utf8"),
+    readFile(new URL("lib/evidence-brief.ts", appRoot), "utf8"),
+    readFile(new URL("lib/ask-legend/chips.mjs", appRoot), "utf8"),
+    readJsonGzip("public/data/p2-5-ui-objects-v1.json.gz"),
+    readJsonGzip("public/data/situate-1f-index.json.gz"),
+  ]);
+  assert.match(page, /data-testid="packet-limitations"/);
+  assert.match(page, /data-testid="packet-coverage-footnotes"/);
+  assert.match(page, /coverageFootnotes/);
+  assert.match(brief, /coverageFootnotesBlock/);
+  assert.match(brief, /5\. Data currency/);
+  assert.match(brief, /coverageHtml/);
+  assert.match(page, /coverageFootnotes\.heading/);
+  const situateBlock = page.slice(page.indexOf("data-testid=\"packet-situate\""), page.indexOf("data-testid=\"packet-date-vs-window\""));
+  assert.doesNotMatch(situateBlock, /13,543|qt6m-xctn|fb86-vt7u|current_phase/);
+  assert.doesNotMatch(chips, /qt6m-xctn|fb86-vt7u|13,543|traffic_signals|ordinary.signal/i);
+  assert.match(page, /NYC_BOUNDS: \[\[number, number\], \[number, number\]\] = \[\[-74\.26, 40\.49\], \[-73\.70, 40\.92\]\]/);
+  const buffalo = p25.places["intersection_node:26912"];
+  const utica = p25.places["intersection_node:26863"];
+  const top = Object.entries(p25.places)
+    .filter(([id]) => id.startsWith("intersection_node:"))
+    .sort((a, b) => b[1].counts["36m"].everyone.injury - a[1].counts["36m"].everyone.injury)[0];
+  assert.equal(top[0], "intersection_node:26912");
+  assert.equal(buffalo.counts["36m"].everyone.injury, 66);
+  assert.equal(buffalo.counts["36m"].everyone.fatal, 0);
+  assert.equal(utica.counts["36m"].everyone.injury, 43);
+  assert.match(JSON.stringify(situate.places["intersection_node:26912"]), /date_insta=2023-03-01/);
+});
+
 
