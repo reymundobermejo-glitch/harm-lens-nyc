@@ -12,7 +12,7 @@
 
 **GitHub:** https://github.com/reymundobermejo-glitch/harm-lens-nyc (existing repo only; no new repo)
 
-**Source commit:** recorded after GitHub sync on `main`.
+**Source commit:** `4560f37` — *Ship P6.1, H4 footnotes, and Legend job coach to production.*
 
 Authorization used (verbatim intent): strong-only production redeploy of the current `phase-3/app` local PASS stack onto `https://harm-lens-nyc.vercel.app`. Include P6.1 street-record display (not Yes/No/Plan), P6.H4 citywide coverage footnotes (DOT 13,543 / `qt6m-xctn` magnitude / `fb86-vt7u` FMS phases — never a place flag or G1b chip), and Ask Legend job coach v1 (PASS local; no LLM; #1 is list order). Established assemble path (`phase-3/scripts/assemble_vercel_static.mjs`), existing GitHub `reymundobermejo-glitch/harm-lens-nyc`, app-root static deploy, Framework Other. Same eleven product gz, byte-identical, `vercel.json` gzip identity headers. W11 11/11 on the READY deployment before alias. `wrapper_shipped: false`. Product freeze stays **2026-06-11 / maintenance**. Gold bind: Buffalo `intersection_node:26912` Everyone/36m Hurt **#1 · 66**, Utica `26863` **43**. Do not mutate product gz, recrop `NYC_BOUNDS`, send FOIL, HOLD unfreeze Exclusive Ped / Slow Zones / Turn Calming, cut over a newer crash feed, ship the 3012 wrapper, or implement G2.
 
