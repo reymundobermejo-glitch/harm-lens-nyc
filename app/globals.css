@@ -1200,6 +1200,16 @@ span.year-chip { cursor: default; }
 .legend-task-deliverable dt { color: var(--teal); font-size: 10px; text-transform: uppercase; letter-spacing: .08em; }
 .legend-task-deliverable dd { margin: 0 0 8px; }
 .legend-task-deliverable ul { margin: 6px 0; padding-left: 18px; }
+.legend-coach-offers { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0 4px; }
+.legend-coach-offers button {
+  padding: 6px 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgba(255,255,255,.06);
+  color: var(--ink);
+  font-size: 12px;
+  cursor: pointer;
+}
 .legend-hour-buckets { display: grid; grid-template-columns: repeat(auto-fill, minmax(88px, 1fr)); gap: 4px; list-style: none; padding: 0; }
 .legend-hour-buckets li { display: flex; justify-content: space-between; gap: 8px; padding: 4px 6px; border: 1px solid var(--line); border-radius: 8px; }
 

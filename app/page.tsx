@@ -1984,6 +1984,7 @@ export default function Home() {
     hours?: { buckets: { hour: number; count: number }[]; unknown: number; total: number; prohibition: string };
     coachCopy?: string;
     nextScreen?: string;
+    offerActions?: readonly { id: string; label: string; utterance: string }[];
   } | null>(null);
   const [focusLegendTask, setFocusLegendTask] = useState(false);
   const legendTaskRef = useRef<HTMLInputElement>(null);
@@ -2732,10 +2733,8 @@ export default function Home() {
     URL.revokeObjectURL(url);
   };
 
-  const submitLegendTask = (event: { preventDefault: () => void }) => {
-    event.preventDefault();
-    const text = legendTask.trim();
-    if (!text) return;
+  const runLegendTask = (text: string) => {
+    if (!text.trim()) return;
     const rankedPlaces = (p25 ? eligiblePlaces : []).map((place) => ({
       id: place.id,
       placeType: place.placeType,
@@ -2747,6 +2746,24 @@ export default function Home() {
       injuryCount: activeP25Count(p25, place.id, windowKey, roadUser, "injury"),
       fatalCount: activeP25Count(p25, place.id, windowKey, roadUser, "fatal"),
       count: activeP25Count(p25, place.id, windowKey, roadUser, lens),
+      countsByWho: {
+        everyone: activeP25Count(p25, place.id, windowKey, "everyone", lens),
+        pedestrian: activeP25Count(p25, place.id, windowKey, "pedestrian", lens),
+        cyclist: activeP25Count(p25, place.id, windowKey, "cyclist", lens),
+        motorist: activeP25Count(p25, place.id, windowKey, "motorist", lens),
+      },
+      injuryByWho: {
+        everyone: activeP25Count(p25, place.id, windowKey, "everyone", "injury"),
+        pedestrian: activeP25Count(p25, place.id, windowKey, "pedestrian", "injury"),
+        cyclist: activeP25Count(p25, place.id, windowKey, "cyclist", "injury"),
+        motorist: activeP25Count(p25, place.id, windowKey, "motorist", "injury"),
+      },
+      fatalByWho: {
+        everyone: activeP25Count(p25, place.id, windowKey, "everyone", "fatal"),
+        pedestrian: activeP25Count(p25, place.id, windowKey, "pedestrian", "fatal"),
+        cyclist: activeP25Count(p25, place.id, windowKey, "cyclist", "fatal"),
+        motorist: activeP25Count(p25, place.id, windowKey, "motorist", "fatal"),
+      },
     }));
     const result = runPlannerJob(text, {
       screen,
@@ -2900,13 +2917,23 @@ export default function Home() {
     if (result.challenge) setLegendDeliverable({ kind: "challenge", challenge: result.challenge as { supports: string; weakens: string; unknowns: string; strongest: string } });
     else if (result.missing) setLegendDeliverable({ kind: "missing", missing: result.missing as { items: string[]; never: string } });
     else if (result.hours) setLegendDeliverable({ kind: "hours", hours: result.hours as { buckets: { hour: number; count: number }[]; unknown: number; total: number; prohibition: string } });
-    else if (result.coachCopy) setLegendDeliverable({ kind: "coach", coachCopy: result.coachCopy, nextScreen: result.nextScreen ?? undefined });
+    else if (result.coachCopy) setLegendDeliverable({
+      kind: "coach",
+      coachCopy: result.coachCopy,
+      nextScreen: result.nextScreen ?? undefined,
+      offerActions: result.offerActions ?? undefined,
+    });
     else if (!result.walk) setLegendDeliverable(null);
     setLegendTrace({
       ok: true,
-      text: `Job understood: ${result.understood} · Tools: ${result.toolNames.join(", ")} · Records through ${formatDateLong(data.meta.analysisEnd)}${result.nextScreen ? ` · Next: ${result.nextScreen}` : ""}`,
+      text: `Job understood: ${result.understood}${result.toolNames.length ? ` · Tools: ${result.toolNames.join(", ")}` : ""} · Records through ${formatDateLong(data.meta.analysisEnd)}${result.nextScreen ? ` · Next: ${result.nextScreen}` : ""}`,
       tools: result.toolNames,
     });
+  };
+
+  const submitLegendTask = (event: { preventDefault: () => void }) => {
+    event.preventDefault();
+    runLegendTask(legendTask.trim());
   };
 
   return (
@@ -2974,6 +3001,14 @@ export default function Home() {
         {legendDeliverable?.kind === "coach" && legendDeliverable.coachCopy && <div className="legend-task-deliverable" data-testid="legend-task-deliverable">
           <p>{ASK_LEGEND_JOB_COACH_HONESTY}</p>
           <p>{legendDeliverable.coachCopy}</p>
+          {legendDeliverable.offerActions?.length ? <div className="legend-coach-offers" data-testid="legend-coach-offers">
+            {legendDeliverable.offerActions.map((action) => (
+              <button key={action.id} type="button" data-testid={`coach-offer-${action.id}`} onClick={() => {
+                setLegendTask(action.utterance);
+                runLegendTask(action.utterance);
+              }}>{action.label}</button>
+            ))}
+          </div> : null}
           {legendDeliverable.nextScreen && <p data-testid="legend-next-screen">Next screen: {legendDeliverable.nextScreen}</p>}
         </div>}
         {legendDeliverable?.kind === "hours" && legendDeliverable.hours && <div className="legend-task-deliverable" data-testid="legend-task-deliverable">

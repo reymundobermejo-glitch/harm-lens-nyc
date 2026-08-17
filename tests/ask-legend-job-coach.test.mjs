@@ -7,8 +7,14 @@ import { gunzipSync } from "node:zlib";
 import {
   ASK_LEGEND_JOB_COACH,
   ASK_LEGEND_STAGE,
+  COACH_OFFER_ACTIONS,
+  COACH_OFFER_COPY,
+  DEFAULT_COMPARE_COPY,
   LIST_ORDER_NOT_DANGEROUS,
+  ONE_INTERSECTION_NOT_AREA,
   boroughOfLonLat,
+  namedBoroughsInUtterance,
+  namedWhoInUtterance,
   resolveCoachLock,
   runPlannerJob,
 } from "../lib/ask-legend/index.mjs";
@@ -39,6 +45,8 @@ const rankedPlaces = [
     injuryCount: 66,
     fatalCount: 0,
     count: 66,
+    countsByWho: { everyone: 66, pedestrian: 8, cyclist: 2, motorist: 10 },
+    injuryByWho: { everyone: 66, pedestrian: 8, cyclist: 2, motorist: 10 },
   },
   {
     id: "intersection_node:26863",
@@ -51,6 +59,8 @@ const rankedPlaces = [
     injuryCount: 43,
     fatalCount: 0,
     count: 43,
+    countsByWho: { everyone: 43, pedestrian: 21, cyclist: 3, motorist: 8 },
+    injuryByWho: { everyone: 43, pedestrian: 21, cyclist: 3, motorist: 8 },
   },
   {
     id: "intersection_node:41385",
@@ -63,6 +73,8 @@ const rankedPlaces = [
     injuryCount: 36,
     fatalCount: 0,
     count: 36,
+    countsByWho: { everyone: 36, pedestrian: 12, cyclist: 4, motorist: 6 },
+    injuryByWho: { everyone: 36, pedestrian: 12, cyclist: 4, motorist: 6 },
   },
   {
     id: "intersection_node:34754",
@@ -75,6 +87,8 @@ const rankedPlaces = [
     injuryCount: 3,
     fatalCount: 0,
     count: 3,
+    countsByWho: { everyone: 3, pedestrian: 1, cyclist: 0, motorist: 1 },
+    injuryByWho: { everyone: 3, pedestrian: 1, cyclist: 0, motorist: 1 },
   },
   {
     id: "intersection_node:21791",
@@ -87,6 +101,23 @@ const rankedPlaces = [
     injuryCount: 3,
     fatalCount: 2,
     count: 3,
+    countsByWho: { everyone: 3, pedestrian: 2, cyclist: 0, motorist: 1 },
+    injuryByWho: { everyone: 3, pedestrian: 2, cyclist: 0, motorist: 1 },
+    fatalByWho: { everyone: 2, pedestrian: 0, cyclist: 0, motorist: 0 },
+  },
+  {
+    id: "intersection_node:54159",
+    placeType: "intersection_node",
+    placeId: 54159,
+    longitude: -73.86,
+    latitude: 40.86,
+    injuryRank: 6,
+    fatalRank: 50,
+    injuryCount: 36,
+    fatalCount: 0,
+    count: 36,
+    countsByWho: { everyone: 36, pedestrian: 5, cyclist: 1, motorist: 7 },
+    injuryByWho: { everyone: 36, pedestrian: 5, cyclist: 1, motorist: 7 },
   },
 ];
 
@@ -112,7 +143,7 @@ const QB = "Compare the Queens location with the most collisions with Brooklynâ€
 
 test("job coach is not G0 and not G2", () => {
   assert.equal(ASK_LEGEND_STAGE, "G0");
-  assert.equal(ASK_LEGEND_JOB_COACH, "job-coach-v1");
+  assert.equal(ASK_LEGEND_JOB_COACH, "job-coach-v1.2");
 });
 
 test("gold coords bind Buffalo Brooklyn and 34754 Queens", () => {
@@ -121,6 +152,7 @@ test("gold coords bind Buffalo Brooklyn and 34754 Queens", () => {
   assert.equal(boroughOfLonLat(-73.81789813429059, 40.69225103031204), "Queens");
   assert.equal(boroughOfLonLat(-73.9374, 40.74892), "Queens");
   assert.equal(boroughOfLonLat(-73.9775353163581, 40.7258766747295), "Manhattan");
+  assert.equal(boroughOfLonLat(-73.86, 40.86), "Bronx");
 });
 
 test("lock unset uses Everyone / 36m / Hurt / intersections and says so", () => {
@@ -161,6 +193,158 @@ test("G-COACH-START selects city #1 Buffalo 26912 and opens Why", () => {
   assert.match(result.stepCopy, /Next screen: Inspect Why/);
   assert.match(result.trace, /Next: Inspect Why/);
   assert.doesNotMatch(JSON.stringify(result), /\bLLM\b|openai|anthropic/i);
+});
+
+function assertCityStart(result, prompt) {
+  assert.equal(result.ok, true, prompt);
+  assert.equal(result.job, "coach", prompt);
+  assert.deepEqual(result.toolNames, ["startCoachJob", "selectPlace", "openInspect", "composeWhyPlace"], prompt);
+  assert.equal(result.tools[1].args.placeId, "intersection_node:26912", prompt);
+  assert.equal(result.tools[2].args.tab, "why", prompt);
+  assert.match(result.why.statement, /66/, prompt);
+  assert.match(result.coachCopy, /one intersection/i, prompt);
+  assert.match(result.coachCopy, /list order/i, prompt);
+  assert.match(result.coachCopy, /not most-dangerous/, prompt);
+  assert.match(result.coachCopy, /not an area or hotspot/, prompt);
+  assert.ok(result.coachCopy.includes(ONE_INTERSECTION_NOT_AREA), prompt);
+  assert.equal(result.nextScreen, "Inspect Why", prompt);
+}
+
+test("v1.1 first-day harm concentrated / most collisions run the start job", () => {
+  const phrases = [
+    "Where is harm concentrated?",
+    "Show me where harm is concentrated",
+    "Where are the most collisions?",
+    "most collisions",
+    "Start",
+    "Start please",
+  ];
+  for (const prompt of phrases) {
+    assertCityStart(runPlannerJob(prompt, session, ctx), prompt);
+  }
+});
+
+test("v1.2 Compare two boroughs copy names Queens vs Brooklyn list #1", () => {
+  const result = runPlannerJob("Compare two boroughs", session, ctx);
+  assert.equal(result.ok, true);
+  assert.equal(result.job, "coach");
+  assert.ok(result.toolNames.includes("openCompare"));
+  const compare = result.tools.find((call) => call.tool === "openCompare");
+  assert.deepEqual(compare.args.compareIds, ["intersection_node:41385", "intersection_node:26912"]);
+  assert.ok(result.coachCopy.includes(DEFAULT_COMPARE_COPY));
+  assert.match(result.coachCopy, /Queens vs Brooklyn list #1/);
+  assert.match(result.coachCopy, /not any two boroughs/);
+});
+
+test("v1.2 unrecognized ask offers clickable Start / Compare / Investigate this hands", () => {
+  const result = runPlannerJob("Help me look at street harm in this workspace", session, ctx);
+  assert.equal(result.ok, true);
+  assert.equal(result.job, "offer");
+  assert.equal(result.refused, false);
+  assert.deepEqual(result.tools, []);
+  assert.deepEqual(result.toolNames, []);
+  assert.equal(result.coachCopy, COACH_OFFER_COPY);
+  assert.deepEqual(result.offerActions, [...COACH_OFFER_ACTIONS]);
+  assert.equal(result.offerActions[0].utterance, "Start");
+  assert.equal(result.offerActions[1].utterance, "Compare two boroughs");
+  assert.equal(result.offerActions[2].utterance, "Investigate this");
+  assert.doesNotMatch(result.coachCopy, /Unknown job/);
+  assert.doesNotMatch(result.trace, /Unknown job/);
+  assert.doesNotMatch(result.trace, /Tools: none/);
+  assert.doesNotMatch(JSON.stringify(result), /\bLLM\b|openai|anthropic/i);
+  const startFromOffer = runPlannerJob(result.offerActions[0].utterance, session, ctx);
+  assertCityStart(startFromOffer, "offer Start hand");
+  const compareFromOffer = runPlannerJob(result.offerActions[1].utterance, session, ctx);
+  assert.ok(compareFromOffer.toolNames.includes("openCompare"), "offer Compare hand");
+  const investigateFromOffer = runPlannerJob(result.offerActions[2].utterance, session, ctx);
+  assertCityStart(investigateFromOffer, "offer Investigate this with no selected place");
+});
+
+test("v1.2 Investigate this with no selected place runs Start, not Explore-first refuse", () => {
+  const result = runPlannerJob("Investigate this", session, ctx);
+  assertCityStart(result, "Investigate this");
+  assert.doesNotMatch(JSON.stringify(result), /Choose a place on Explore first/);
+});
+
+test("v1.2 Investigate this with a selected place still investigates that place", () => {
+  const result = runPlannerJob("Investigate this", { ...session, selectedId: "intersection_node:26912" }, {
+    ...ctx,
+    universe: [{
+      id: "intersection_node:26912",
+      placeType: "intersection_node",
+      placeId: 26912,
+      title: "Buffalo Ave & Eastern Pkwy",
+      streetNames: ["Buffalo Ave", "Eastern Pkwy"],
+      displayName: "Buffalo Ave & Eastern Pkwy",
+    }],
+    injuryCount: 66,
+    fatalCount: 0,
+  });
+  assert.equal(result.ok, true);
+  assert.equal(result.job, "investigate");
+  assert.ok(!result.toolNames.includes("startCoachJob"));
+  assert.equal(result.tools.find((call) => call.tool === "selectPlace")?.args.placeId, "intersection_node:26912");
+  assert.ok(result.toolNames.includes("composeWhyPlace"));
+});
+
+test("v1.2 named Who and borough lock Start â€” pedestrians in Queens is not Everyone citywide Buffalo", () => {
+  assert.equal(namedWhoInUtterance("most collisions involving pedestrians in Queens"), "pedestrian");
+  assert.deepEqual(namedBoroughsInUtterance("most collisions involving pedestrians in Queens"), ["Queens"]);
+  const result = runPlannerJob("most collisions involving pedestrians in Queens", session, ctx);
+  assert.equal(result.ok, true);
+  assert.equal(result.job, "coach");
+  assert.equal(result.tools.find((call) => call.tool === "setRoadUser")?.args.roadUser, "pedestrian");
+  assert.equal(result.tools.find((call) => call.tool === "selectTopInBorough")?.args.borough, "Queens");
+  assert.equal(result.tools.find((call) => call.tool === "selectPlace")?.args.placeId, "intersection_node:41385");
+  assert.notEqual(result.tools.find((call) => call.tool === "selectPlace")?.args.placeId, "intersection_node:26912");
+  assert.match(result.coachCopy, /Walking \/ 36m \/ Hurt \/ intersections/);
+  assert.match(result.coachCopy, /Queens list #1/);
+  assert.match(result.why.statement, /12/);
+  assert.doesNotMatch(result.why.statement, /\b66\b/);
+  assert.doesNotMatch(result.coachCopy, /Everyone/);
+});
+
+test("v1.2 named Who bikes / cars lock Start under that borough, not Everyone citywide Buffalo", () => {
+  const bikes = runPlannerJob("most collisions involving bikes in Brooklyn", session, ctx);
+  assert.equal(bikes.tools.find((call) => call.tool === "setRoadUser")?.args.roadUser, "cyclist");
+  assert.equal(bikes.tools.find((call) => call.tool === "selectTopInBorough")?.args.borough, "Brooklyn");
+  assert.equal(bikes.tools.find((call) => call.tool === "selectPlace")?.args.placeId, "intersection_node:26863");
+  assert.match(bikes.coachCopy, /Bikes \/ 36m \/ Hurt \/ intersections/);
+  assert.doesNotMatch(bikes.why.statement, /\b66\b/);
+  const cars = runPlannerJob("most collisions involving cars in Queens", session, ctx);
+  assert.equal(cars.tools.find((call) => call.tool === "setRoadUser")?.args.roadUser, "motorist");
+  assert.equal(cars.tools.find((call) => call.tool === "selectPlace")?.args.placeId, "intersection_node:41385");
+  assert.match(cars.coachCopy, /Cars \/ 36m \/ Hurt \/ intersections/);
+});
+
+test("v1.2 named borough Start uses that borough list #1, not citywide Buffalo", () => {
+  const result = runPlannerJob("most collisions in Queens", session, ctx);
+  assert.equal(result.tools.find((call) => call.tool === "selectTopInBorough")?.args.borough, "Queens");
+  assert.equal(result.tools.find((call) => call.tool === "selectPlace")?.args.placeId, "intersection_node:41385");
+  assert.match(result.coachCopy, /Everyone \/ 36m \/ Hurt \/ intersections/);
+  assert.ok(result.coachCopy.includes(ONE_INTERSECTION_NOT_AREA));
+});
+
+test("v1.2 Compare uses the two named boroughs when present", () => {
+  const result = runPlannerJob("Compare Manhattan and the Bronx", session, ctx);
+  assert.equal(result.ok, true);
+  const tops = result.tools.filter((call) => call.tool === "selectTopInBorough");
+  assert.equal(tops[0].args.borough, "Manhattan");
+  assert.equal(tops[0].args.placeId, "intersection_node:21791");
+  assert.equal(tops[1].args.borough, "Bronx");
+  assert.equal(tops[1].args.placeId, "intersection_node:54159");
+  const compare = result.tools.find((call) => call.tool === "openCompare");
+  assert.deepEqual(compare.args.compareIds, ["intersection_node:21791", "intersection_node:54159"]);
+  assert.match(result.coachCopy, /This run is Manhattan vs Bronx list #1/);
+  assert.doesNotMatch(result.coachCopy, /any two boroughs/);
+  assert.doesNotMatch(result.coachCopy, /Queens vs Brooklyn/);
+});
+
+test("v1.2 Compare with only one named borough refuses instead of inventing a pair", () => {
+  const result = runPlannerJob("Compare two boroughs in Queens", session, ctx);
+  assert.equal(result.ok, false);
+  assert.deepEqual(result.tools, []);
+  assert.match(result.reason, /Name two boroughs to compare/);
 });
 
 test("G-COACH-QB selects Queens #1 and Brooklyn #1 and opens Compare", () => {
@@ -304,4 +488,7 @@ test("job coach does not mutate product gz or recrop NYC_BOUNDS", async () => {
   }
   const page = await readFile(new URL("app/page.tsx", appRoot), "utf8");
   assert.match(page, /NYC_BOUNDS: \[\[number, number\], \[number, number\]\] = \[\[-74\.26, 40\.49\], \[-73\.70, 40\.92\]\]/);
+  assert.match(page, /data-testid=\{`coach-offer-\$\{action.id\}`\}/);
+  assert.match(page, /runLegendTask\(action.utterance\)/);
+  assert.match(page, /data-testid="legend-coach-offers"/);
 });

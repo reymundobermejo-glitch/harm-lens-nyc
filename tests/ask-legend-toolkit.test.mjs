@@ -193,9 +193,14 @@ test("gold must-refuse does not plan map mutations", () => {
   }
 });
 
-test("unknown job and missing place refuse without tools", () => {
-  assert.equal(runPlannerJob("Invent a new rank for this corner", session, ctx).ok, false);
+test("unknown job and missing place: offer vs refuse", () => {
+  const offer = runPlannerJob("Invent a new rank for this corner", session, ctx);
+  assert.equal(offer.ok, true);
+  assert.equal(offer.job, "offer");
+  assert.deepEqual(offer.tools, []);
+  assert.match(offer.coachCopy, /Start/);
   assert.deepEqual(runPlannerJob("Show 2023 crashes", session, ctx).tools, []);
+  assert.equal(runPlannerJob("Show 2023 crashes", session, ctx).ok, false);
   assert.deepEqual(runPlannerJob("Prepare this for the meeting", session, ctx).tools, []);
 });
 

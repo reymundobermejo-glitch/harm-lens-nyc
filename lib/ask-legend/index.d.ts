@@ -202,6 +202,7 @@ export type PlannerJobOk = {
   coachCopy?: string | null;
   stepCopy?: string | null;
   nextScreen?: string | null;
+  offerActions?: readonly { id: string; label: string; utterance: string }[] | null;
   dataThrough: string | null;
   sourceStatus?: string | null;
   honesty: string;
@@ -248,9 +249,17 @@ export declare function openCompare(raw?: unknown, session?: Record<string, unkn
 export declare function composeWhyPlace(raw?: unknown, session?: Record<string, unknown>): ToolResult;
 export declare function isSelectedPlacePronoun(value: string): boolean;
 
-export declare const ASK_LEGEND_JOB_COACH: "job-coach-v1";
+export declare const ASK_LEGEND_JOB_COACH: "job-coach-v1.2";
 export declare const ASK_LEGEND_JOB_COACH_HONESTY: "Legend moves this workspace — frozen evidence only; not official priority.";
 export declare const LIST_ORDER_NOT_DANGEROUS: "This is list order under the lock, not most-dangerous.";
+export declare const ONE_INTERSECTION_NOT_AREA: "This is one intersection under the lock — list order, not an area or hotspot, not most-dangerous.";
+export declare const DEFAULT_COMPARE_COPY: "This run is Queens vs Brooklyn list #1, not any two boroughs.";
+export declare const COACH_OFFER_COPY: "Choose Start, Compare two boroughs, or Investigate this. Rank #1 is list order under the lock, not most-dangerous.";
+export declare const COACH_OFFER_ACTIONS: readonly [
+  { id: "start"; label: "Start"; utterance: "Start" },
+  { id: "compare"; label: "Compare two boroughs"; utterance: "Compare two boroughs" },
+  { id: "investigate"; label: "Investigate this"; utterance: "Investigate this" },
+];
 export declare const JOB_COACH_TOOLS: readonly string[];
 export declare function lockPhrase(lock: { roadUser: string; windowKey: string; lens: string; grain: string }): string;
 export declare function resolveCoachLock(state?: Record<string, unknown>): {
@@ -260,7 +269,8 @@ export declare function resolveCoachLock(state?: Record<string, unknown>): {
   lens: AskLegendLens;
   grain: AskLegendPlaceType;
 };
-export declare function boroughOfLonLat(lon: number, lat: number): "Manhattan" | "Brooklyn" | "Queens" | "Bronx" | "Staten Island" | null;
+export declare function namedWhoInUtterance(raw: unknown): "everyone" | "pedestrian" | "cyclist" | "motorist" | null;
+export declare function namedBoroughsInUtterance(raw: unknown): Array<"Manhattan" | "Brooklyn" | "Queens" | "Bronx" | "Staten Island">;
 export declare function normalizeBoroughName(raw: unknown): "Manhattan" | "Brooklyn" | "Queens" | "Bronx" | "Staten Island" | null;
 export declare function startCoachJob(raw?: Record<string, unknown>): ToolResult;
 export declare function selectTopInBorough(
