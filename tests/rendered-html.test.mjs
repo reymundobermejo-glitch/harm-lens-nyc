@@ -116,7 +116,6 @@ test("decision surface exposes required disclosures and Phase 3.2 interaction jo
     "Differences only",
     "Counts",
     "Crashes",
-    "Hold up?",
     "On the street",
   ]) assert.match(page, new RegExp(required.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
   assert.match(page, /NYC_MAX_BOUNDS/);
@@ -142,18 +141,18 @@ test("Phase 3.3 separates screens and teaches place and tool meaning", async () 
   ]);
   for (const term of [
     'type ActiveScreen = "overview" | "explore" | "inspect" | "compare" | "packet"',
-    'Look at places. Switch injury and fatal. Open one to see why it showed up.',
+    'Where crash reports pile up on NYC streets.',
     'Places with crash reports',
     'Extra faint marks',
     'Your working set — not a priority list.',
     'Stable ID from NYC’s LION street network.',
     'Street segment · peer mode (not snapped into an intersection).',
-    'Why this place is on the list',
+    'Why this place surfaced',
     'Supporting crash records',
-    'Whether the signal changes under checks',
+    'Hurt and Died under this lock',
     'Published street records',
     'Place ID &amp; method',
-    'We re-checked this place with different time windows.',
+    'Does this still show if we change the window?',
     'Incomplete checks are never called stable.',
     'DRAFT Location Evidence Packet',
     'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
@@ -316,7 +315,7 @@ test("C5 reserves non-overlapping chrome bands and keeps narrow controls reachab
   assert.ok(page.includes("map-focus-group"));
   assert.ok(page.includes("This pile ·"));
   assert.ok(page.includes("Whole city"));
-  assert.ok(page.includes("Look at places. Switch injury and fatal."));
+  assert.ok(page.includes("Where crash reports pile up on NYC streets."));
   assert.doesNotMatch(page, /two harm lenses/);
   assert.match(page, /mapHudExpanded, setMapHudExpanded] = useState\(false\)/);
   assert.match(page, /hl-map-hud:expanded/);
@@ -341,7 +340,7 @@ test("C5 reserves non-overlapping chrome bands and keeps narrow controls reachab
   assert.match(page, /data-testid="map-search-zero"/);
   assert.doesNotMatch(page, /locked evidence frame/);
   assert.ok(page.includes('useState<string | null>(null)'));
-  for (const label of ["Counts", "Crashes", "Hold up?", "On the street", "Note"]) assert.ok(page.includes(label));
+  for (const label of ["Counts", "Crashes", "On the street", "Note"]) assert.ok(page.includes(label));
   assert.ok(page.includes("Place ID &amp; method"));
   assert.ok(page.includes("setWorkerUrl"));
   assert.ok(page.includes("/_next/static/chunks/maplibre-gl-worker.mjs"));
@@ -857,6 +856,46 @@ test("P6.H4 binds citywide coverage footnotes only on Packet limitations and Evi
   assert.equal(buffalo.counts["36m"].everyone.fatal, 0);
   assert.equal(utica.counts["36m"].everyone.injury, 43);
   assert.match(JSON.stringify(situate.places["intersection_node:26912"]), /date_insta=2023-03-01/);
+});
+
+test("copy contrast Hold up fold keeps window checks without printing robustness", async () => {
+  const [page, css, p25] = await Promise.all([
+    readFile(new URL("app/page.tsx", appRoot), "utf8"),
+    readFile(new URL("app/globals.css", appRoot), "utf8"),
+    readJsonGzip("public/data/p2-5-ui-objects-v1.json.gz"),
+  ]);
+  assert.doesNotMatch(page, /Hold up\?/);
+  assert.doesNotMatch(page, />Robustness</);
+  assert.doesNotMatch(page, /tab === "robustness"/);
+  assert.match(page, /Does this still show if we change the window\?/);
+  assert.match(page, /data-testid="window-checks"/);
+  assert.match(page, /Incomplete or deferred tests are never summarized as “stable\.”/);
+  assert.match(page, /Window checks/);
+  assert.match(page, /Where crash reports pile up on NYC streets\./);
+  assert.match(page, /The night map and the list share one lock\./);
+  assert.match(page, /One place: Hurt and Died, dated reports/);
+  assert.match(page, /Two places, same Who, How long, and grain\./);
+  assert.match(page, /Keep Who, How long, and grain matched\./);
+  assert.match(page, /Look-order under your lock\./);
+  assert.doesNotMatch(page, /Look at places\. Switch injury and fatal/);
+  assert.match(page, /\["feature-state", "pulse"\]/);
+  assert.match(page, /id: "places-hit"/);
+  assert.match(page, /"circle-radius": 11/);
+  assert.match(page, /"circle-radius": 12/);
+  assert.match(page, /lastPulseIdRef/);
+  assert.match(page, /prefers-reduced-motion: reduce/);
+  assert.doesNotMatch(page, /setPaintProperty\("places-point", "circle-radius",[^\n]*(injuryCount|fatalCount|activeP25Count)/);
+  assert.doesNotMatch(page, /heatmap|extrusion|pitch:\s*[1-9]/);
+  assert.match(css, /\.window-checks-read, \.robustness-read \{[^}]*background: rgba\(112,184,173,\.12\)/);
+  assert.doesNotMatch(css, /\.robustness-read \{[^}]*#edf2ee/);
+  assert.doesNotMatch(css, /\.situate-totals span \{[^}]*#d8d0c1/);
+  assert.doesNotMatch(css, /\.map-framing-hint \{[^}]*#f5f2e8|#fffaf0|245, 242, 232/);
+  assert.match(css, /\.overview-copy > p \{[^}]*color: var\(--ink\)[^}]*font-size: 16px/);
+  assert.match(css, /\.window-checks-read, \.robustness-read \{[^}]*font-size: 13px/);
+  assert.match(css, /\.count-mark\.injury\.active strong \{ color: #d98b28/);
+  assert.match(css, /\.count-mark\.fatal\.active strong \{ color: #c94a37/);
+  assert.equal(p25.places["intersection_node:26912"].counts["36m"].everyone.injury, 66);
+  assert.match(page, /NYC_BOUNDS: \[\[number, number\], \[number, number\]\] = \[\[-74\.26, 40\.49\], \[-73\.70, 40\.92\]\]/);
 });
 
 

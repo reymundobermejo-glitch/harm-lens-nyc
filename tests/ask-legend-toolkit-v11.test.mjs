@@ -64,16 +64,17 @@ test("v1 gold Why / 2023 / Prepare / refuse still pass through", () => {
   assert.deepEqual(refuse.tools, []);
 });
 
-test("Walk me through this place tours Counts → Crashes → On the street → Hold up?", () => {
+test("Walk me through this place tours Counts → Crashes → On the street", () => {
   const none = runPlannerJob("Walk me through this place", { ...selected, selectedId: null }, ctx);
   assert.equal(none.ok, false);
   assert.deepEqual(none.tools, []);
   const result = runPlannerJob("Walk me through this place", selected, ctx);
   assert.equal(result.ok, true);
   assert.deepEqual(result.toolNames, ["walkThroughPlace"]);
-  assert.deepEqual(result.walk.map((step) => step.tab), ["why", "records", "situate", "robustness"]);
+  assert.deepEqual(result.walk.map((step) => step.tab), ["why", "records", "situate"]);
   assert.match(result.walk[0].caption, /Counts/);
-  assert.match(result.walk[3].caption, /Hold up/);
+  assert.match(result.walk[0].caption, /window/);
+  assert.equal(result.walk.some((step) => /Hold up|robustness/i.test(step.caption)), false);
 });
 
 test("G-MISS-1 What am I missing lists field gaps, not treatments", () => {

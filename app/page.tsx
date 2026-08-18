@@ -54,7 +54,7 @@ type PlaceMode = "intersection_node" | "midblock_segment";
 type Lens = "injury" | "fatal";
 type RoadUser = "everyone" | "pedestrian" | "cyclist" | "motorist";
 type WindowKey = "24m" | "36m" | "48m";
-type InspectorTab = "why" | "records" | "robustness" | "situate" | "packet";
+type InspectorTab = "why" | "records" | "situate" | "packet";
 type ActiveScreen = "overview" | "explore" | "inspect" | "compare" | "packet";
 type AgreementFilter = "all" | "injury_led" | "fatal_led" | "both";
 type CameraCommand = { kind: "fit" | "borough" | "selected"; borough?: string; nonce: number };
@@ -1594,6 +1594,7 @@ function Phase32MapSurface({
   const focusGroupRef = useRef(focusGroup);
   const hudHeightRef = useRef(hudHeight);
   const hoveredFeatureRef = useRef<{ source: "places" | "focus-places"; id: string | number } | null>(null);
+  const lastPulseIdRef = useRef<string | null>(null);
   const [mapReady, setMapReady] = useState(false);
   const [mapError, setMapError] = useState(false);
 
@@ -1662,9 +1663,9 @@ function Phase32MapSurface({
         map.addSource("uncertainty", { type: "geojson", data: uncertaintyGeo });
         map.addLayer({ id: "possible-points", type: "circle", source: "uncertainty", filter: ["==", ["get", "assignmentClass"], "intersection_possible_or_exception"], layout: { visibility: "none" }, paint: { "circle-color": "rgba(0,0,0,0)", "circle-radius": 2.4, "circle-opacity": 0.28, "circle-stroke-color": "#bd7b23", "circle-stroke-width": 0.9, "circle-stroke-opacity": 0.28 } });
         map.addLayer({ id: "unresolved-points", type: "circle", source: "uncertainty", filter: ["==", ["get", "assignmentClass"], "unresolved"], layout: { visibility: "none" }, paint: { "circle-color": "#6d7480", "circle-radius": 1.8, "circle-opacity": 0.22 } });
-        map.addSource("selected-place", { type: "geojson", data: { type: "FeatureCollection", features: [] } });
-        map.addLayer({ id: "selected-halo", type: "circle", source: "selected-place", paint: { "circle-radius": 18, "circle-color": "#071219", "circle-opacity": 0.92, "circle-stroke-color": "#ffffff", "circle-stroke-width": 2.5 } });
-        map.addLayer({ id: "selected-ring", type: "circle", source: "selected-place", paint: { "circle-radius": 9, "circle-color": "#e0a13a", "circle-opacity": 1, "circle-blur": 0.08, "circle-stroke-color": "#ffffff", "circle-stroke-width": 1.5 } });
+        map.addSource("selected-place", { type: "geojson", data: { type: "FeatureCollection", features: [] }, promoteId: "id" });
+        map.addLayer({ id: "selected-halo", type: "circle", source: "selected-place", paint: { "circle-radius": ["case", ["boolean", ["feature-state", "pulse"], false], 26, 18], "circle-color": "#071219", "circle-opacity": ["case", ["boolean", ["feature-state", "pulse"], false], 0.55, 0.92], "circle-stroke-color": "#ffffff", "circle-stroke-width": 2.5 } });
+        map.addLayer({ id: "selected-ring", type: "circle", source: "selected-place", paint: { "circle-radius": ["case", ["boolean", ["feature-state", "pulse"], false], 13, 9], "circle-color": "#e0a13a", "circle-opacity": 1, "circle-blur": 0.08, "circle-stroke-color": "#ffffff", "circle-stroke-width": 1.5 } });
         map.addSource("compare-pins", { type: "geojson", data: { type: "FeatureCollection", features: [] } });
         map.addLayer({ id: "compare-pin-glow", type: "circle", source: "compare-pins", paint: { "circle-radius": 22, "circle-color": ["match", ["get", "label"], "A", "#d98b28", "#70b8ad"], "circle-opacity": 0.38, "circle-blur": 0.82 } });
         map.addLayer({ id: "compare-pin-rings", type: "circle", source: "compare-pins", paint: { "circle-radius": 8, "circle-color": "#ffffff", "circle-stroke-color": ["match", ["get", "label"], "A", "#d98b28", "#70b8ad"], "circle-stroke-width": 2.2 } });
@@ -1880,8 +1881,25 @@ function Phase32MapSurface({
     const source = map.getSource("selected-place") as GeoJSONSource;
     const features = !selected || selected.longitude === null || selected.latitude === null
       ? []
-      : [{ type: "Feature" as const, geometry: { type: "Point" as const, coordinates: [selected.longitude, selected.latitude] }, properties: { id: selected.id } }];
+      : [{ type: "Feature" as const, id: selected.id, geometry: { type: "Point" as const, coordinates: [selected.longitude, selected.latitude] }, properties: { id: selected.id } }];
     source.setData({ type: "FeatureCollection", features });
+    const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const pulseDuration = reduceMotion ? 0 : 280;
+    map.setPaintProperty("selected-halo", "circle-radius-transition", { duration: pulseDuration, delay: 0 });
+    map.setPaintProperty("selected-halo", "circle-opacity-transition", { duration: pulseDuration, delay: 0 });
+    map.setPaintProperty("selected-ring", "circle-radius-transition", { duration: pulseDuration, delay: 0 });
+    if (!selected) {
+      lastPulseIdRef.current = null;
+      return;
+    }
+    if (reduceMotion || lastPulseIdRef.current === selected.id) return;
+    lastPulseIdRef.current = selected.id;
+    const featureId = selected.id;
+    try { map.setFeatureState({ source: "selected-place", id: featureId }, { pulse: true }); } catch { /* source may still be empty */ }
+    const handle = window.setTimeout(() => {
+      try { map.setFeatureState({ source: "selected-place", id: featureId }, { pulse: false }); } catch { /* selection may have cleared */ }
+    }, reduceMotion ? 0 : 420);
+    return () => window.clearTimeout(handle);
   }, [mapReady, selected]);
 
   useEffect(() => {
@@ -2888,7 +2906,7 @@ export default function Home() {
           setScreen("inspect");
           steps.forEach((step, index) => {
             const handle = window.setTimeout(() => {
-              if (step.tab === "why" || step.tab === "records" || step.tab === "situate" || step.tab === "robustness") setTab(step.tab);
+              if (step.tab === "why" || step.tab === "records" || step.tab === "situate") setTab(step.tab);
               setLegendDeliverable({ kind: "walk", walkCaption: step.caption });
             }, index * 700);
             legendTourTimers.current.push(handle);
@@ -3021,8 +3039,8 @@ export default function Home() {
 
       {screen === "overview" && <section className="overview-screen" data-testid="overview-screen">
         <div className="overview-city" aria-hidden="true" />
-        <div className="overview-copy"><span className="eyebrow">NYC street-safety evidence</span><h1>Look at places. Switch injury and fatal. Open one to see why it showed up.</h1><p>Look at places. Switch Hurt and Died. Open one to see the crash reports.</p><button data-testid="open-the-map" onClick={openTheMap}>Open the map <ChevronRight size={17} /></button></div>
-        <div className="overview-steps" data-testid="overview-steps"><article><span>01</span><strong>Explore</strong><p>Look at places on the night map.</p></article><article><span>02</span><strong>Inspect</strong><p>Open one. Switch Hurt and Died.</p></article><article><span>03</span><strong>Compare</strong><p>Put two places under the same lock.</p></article></div>
+        <div className="overview-copy"><span className="eyebrow">NYC street-safety evidence</span><h1>Where crash reports pile up on NYC streets.</h1><p>Scan the city, open one corner, or hold two places to the same lock. This is a closer look — not a danger score, a cause, or a work order.</p><button data-testid="open-the-map" onClick={openTheMap}>Open the map <ChevronRight size={17} /></button></div>
+        <div className="overview-steps" data-testid="overview-steps"><article><span>01</span><strong>Explore</strong><p>The night map and the list share one lock. List order is where to look next, not what the camera is showing.</p></article><article><span>02</span><strong>Inspect</strong><p>One place: Hurt and Died, dated reports, and whether the count still shows if the window changes.</p></article><article><span>03</span><strong>Compare</strong><p>Two places, same Who, How long, and grain. The difference is not a ranking.</p></article></div>
         <p className="overview-limit"><LockKeyhole size={14} />This tool supports a closer look. It does not say what to build or which place is official priority.</p>
       </section>}
 
@@ -3031,7 +3049,7 @@ export default function Home() {
           <div className="panel-heading" data-testid="explore-list-heading" data-list-kind={exploreListKind}>
             <span className="eyebrow">{exploreListKind === "search" ? "These search matches" : exploreListKind === "pile" ? `This pile · ${formatNumber(focusGroup?.ids.length ?? 0)} places` : `Closer look · whole city · ${lens === "injury" ? "Hurt" : "Died"}`}</span>
             <h1>Places with crash reports</h1>
-            <p>{exploreListKind === "search" ? "These rows match the search under the active lock. This is not city closer-look order." : exploreListKind === "pile" ? "These are the places in this numbered stack. Not city closer-look order." : "This is city closer-look order, not what the camera is looking at. Higher means more crash reports under your choices—not more danger or official priority."}</p>
+            <p>{exploreListKind === "search" ? "These rows match the search under the active lock. This is not city look-order." : exploreListKind === "pile" ? "These are the places in this numbered stack. Not city look-order." : "Look-order under your lock. Higher means more crash reports under those choices — not more danger, and not the camera view."}</p>
           </div>
 
           <div className="surface-freshness" data-testid="explore-freshness">
@@ -3236,7 +3254,7 @@ export default function Home() {
         {(screen === "inspect" || screen === "compare") && <aside className={`inspector-panel ${compareOpen ? "comparison-drawer" : ""}`}>
           {compareOpen ? (
             <>
-              <div className="compare-header"><div><span className="eyebrow">Compare · one shared lock</span><h2>Two {mode === "intersection_node" ? "intersections" : "midblock segments"}, one evidence frame</h2></div><button className="icon-button" aria-label="Close comparison" onClick={() => { setCompareOpen(false); setScreen("explore"); }}><X size={18} /></button></div>
+              <div className="compare-header"><div><span className="eyebrow">Same lock, two places</span><h2>Keep Who, How long, and grain matched. Then read the difference.</h2></div><button className="icon-button" aria-label="Close comparison" onClick={() => { setCompareOpen(false); setScreen("explore"); }}><X size={18} /></button></div>
               <div className="compare-controls"><button onClick={() => setCompareIds((ids) => [...ids].reverse())}><ArrowLeftRight size={14} />Swap A/B</button><label><input type="checkbox" checked={diffOnly} onChange={(event) => setDiffOnly(event.target.checked)} />Differences only</label></div>
               <div className="shared-lock-capsule" data-testid="compare-lock-capsule"><LockKeyhole size={15} /><strong>{compareLockPass && comparePlaces.length === 2 ? "Lock PASS" : "Lock broken"}</strong><span>{ROAD_USER_MAP_LABELS[roadUser]}</span><span>{WINDOW_MAP_LABELS[windowKey]}</span><span>{mode === "intersection_node" ? "Intersections" : "Midblock"}</span></div>
               {!compareLockPass || comparePlaces.length !== 2 ? <div className="compare-blocked" data-testid="compare-blocked"><AlertTriangle /><strong>Comparison blocked</strong><p>The shared Who / How long / grain lock no longer matches both places. The map is dimmed. No difference is shown — restart A/B under one lock.</p></div> : <div data-testid="compare-drawer" className="compare-content">
@@ -3264,7 +3282,7 @@ export default function Home() {
                   <div className="compare-row"><span>Died records</span><strong>{countFor(comparePlaces[0], "fatal")}</strong><strong>{countFor(comparePlaces[1], "fatal")}</strong></div>
                   {baselineMethod && <div className="compare-row"><span>Lens agreement</span><strong>{formatState(comparePlaces[0].lensAgreementState)}</strong><strong>{formatState(comparePlaces[1].lensAgreementState)}</strong></div>}
                   {!diffOnly || comparePlaces[0].assignmentClass !== comparePlaces[1].assignmentClass ? <div className="compare-row"><span>Assignment</span><strong>{formatState(comparePlaces[0].assignmentClass)}</strong><strong>{formatState(comparePlaces[1].assignmentClass)}</strong></div> : null}
-                  {!diffOnly || fragilityRead(comparePlaces[0]) !== fragilityRead(comparePlaces[1]) ? <div className="compare-row"><span>Robustness</span><strong>{fragilityRead(comparePlaces[0])}</strong><strong>{fragilityRead(comparePlaces[1])}</strong></div> : null}
+                  {!diffOnly || fragilityRead(comparePlaces[0]) !== fragilityRead(comparePlaces[1]) ? <div className="compare-row"><span>Window checks</span><strong>{fragilityRead(comparePlaces[0])}</strong><strong>{fragilityRead(comparePlaces[1])}</strong></div> : null}
                   {!diffOnly || historyRead(situateIndex?.places[comparePlaces[0].id]?.oneF) !== historyRead(situateIndex?.places[comparePlaces[1].id]?.oneF) ? <div className="compare-row"><span>Documented history</span><strong>{historyRead(situateIndex?.places[comparePlaces[0].id]?.oneF)}</strong><strong>{historyRead(situateIndex?.places[comparePlaces[1].id]?.oneF)}</strong></div> : null}
                 </div>
                 <div className="unsupported-card"><LockKeyhole size={18} /><div><strong>Analytical comparison only</strong><p>No risk, cause, treatment, effectiveness, official priority, or durable shortlist claim is made.</p></div></div>
@@ -3274,15 +3292,15 @@ export default function Home() {
           ) : !selected ? (
             <div className="inspector-header">
               <div>
-                <span className="eyebrow">Inspect</span>
+                <span className="eyebrow">This place</span>
                 <h2>Choose a place on Explore</h2>
-                <p className="lion-explainer">Select a ranked place from the list or map, then open Inspect from the selected-place card.</p>
+                <p className="lion-explainer">Pick a ranked place from the list or map, then open it from the selected-place card.</p>
               </div>
             </div>
           ) : (<>
           <div className="inspector-header">
             <div>
-              <span className="eyebrow">Inspect selected place</span>
+              <span className="eyebrow">This place</span>
               <h2>{placeTitle(selected, placeLabels)}</h2>
               <details className="place-method-details">
                 <summary>Place ID &amp; method</summary>
@@ -3298,7 +3316,6 @@ export default function Home() {
           <div className="inspector-tabs" role="tablist">
             <button className={tab === "why" ? "active" : ""} onClick={() => setTab("why")}><Info size={15} />Counts</button>
             <button className={tab === "records" ? "active" : ""} onClick={() => setTab("records")}><List size={15} />Crashes</button>
-            <button className={tab === "robustness" ? "active" : ""} onClick={() => setTab("robustness")}><Activity size={15} />Hold up?</button>
             <button data-testid="situate-tab" className={tab === "situate" ? "active" : ""} onClick={() => setTab("situate")}><Layers3 size={15} />On the street</button>
             <button data-testid="prepare-evidence-brief" className={tab === "packet" ? "active" : ""} title="Prepare a DRAFT Evidence Brief for this place." onClick={prepareEvidenceBrief}><FileText size={15} />Note</button>
           </div>
@@ -3324,7 +3341,7 @@ export default function Home() {
                   <summary>Count method</summary>
                   <div className="validation-line"><Check size={15} /><strong>Equality PASS</strong><span>counts match unique supporting IDs under this lock</span></div>
                 </details>
-                <p className="tab-purpose"><Info size={14} /><span><strong>Why this place is on the list</strong>Why it surfaced, what the locked evidence supports, what it cannot establish, and what to investigate next.</span></p>
+                <p className="tab-purpose"><Info size={14} /><span><strong>Hurt and Died under this lock</strong>Window checks sit below. They never mean the place is stable.</span></p>
                 <section className="why-surfaced" data-testid="why-this-place-surfaced">
                   <div className="why-surfaced-head">
                     <div><span className="eyebrow">Why this place surfaced</span><h3>{placeTitle(selected, placeLabels)}</h3></div>
@@ -3350,6 +3367,20 @@ export default function Home() {
                 </section>
 
                 {selectedPersistence && <section className="persistence-card" data-testid="persistence-state"><span className="eyebrow">36m ↔ 48m sensitivity · Everyone predicate</span><h4>{selectedPersistence.positive ? "Elevated in both released checks" : "Not elevated in both released checks"}</h4><p>36m: {selectedPersistence.count36} records vs threshold {selectedPersistence.threshold36}. 48m: {selectedPersistence.count48} vs threshold {selectedPersistence.threshold48}. {lens === "fatal" ? "Fatal elevation means at least one fatal crash record — not a high-count tier." : "This is not stable, chronic, hotspot, risk, or official priority."}</p></section>}
+
+                <section className="window-checks" data-testid="window-checks">
+                  <div className="section-row"><div><span className="eyebrow">Window checks</span><h4>Does this still show if we change the window?</h4></div><span className="claim-chip calculation">Calculation</span></div>
+                  <p className="window-checks-read">{fragilityRead(selected)}</p>
+                  <ul className="fragility-list">
+                    <li><span>Last 24 months</span><strong>{formatState(selected.fragility.trailing24State)}</strong></li>
+                    <li><span>Last 36 months</span><strong>{formatState(selected.fragility.trailing36State)}</strong></li>
+                    <li><span>Last 48 months</span><strong>{formatState(selected.fragility.trailing48State)}</strong></li>
+                    <li><span>Without 2024</span><strong>{formatState(selected.fragility.omit2024State)}</strong></li>
+                    <li><span>Without 2025</span><strong>{formatState(selected.fragility.omit2025State)}</strong></li>
+                    <li className="deferred"><span>Street-distance check</span><strong>Not run yet</strong><small>Incomplete checks are never called stable.</small></li>
+                  </ul>
+                  <p className="method-copy">Incomplete or deferred tests are never summarized as “stable.”</p>
+                </section>
 
                 <section className="disclosure-card fatal-disclosure">
                   <CircleHelp size={18} />
@@ -3388,26 +3419,6 @@ export default function Home() {
                   <div className="validation-line"><Check size={15} /><strong>Equality PASS</strong><span>{selectedInjuryIds.length + selectedFatalIds.length} lens memberships inspected</span></div>
                 </details>
                 <section className="unsupported-card"><LockKeyhole size={18} /><div><strong>Record limits</strong><p>IDs support the two harm predicates only. They do not establish risk, cause, treatment need, or official priority.</p></div></section>
-              </div>
-            )}
-
-            {tab === "robustness" && (
-              <div className="tab-content">
-                <p className="tab-purpose"><Activity size={14} /><span><strong>Whether the signal changes under checks</strong>Completed checks use different time windows; unfinished checks stay explicit.</span></p>
-                <p className="inspect-lead">We re-checked this place with different time windows. Here’s what changed.</p>
-                <section>
-                  <div className="section-row"><div><span className="eyebrow">Completed checks</span><h4>{selected.fragility.anyTestedStateChange ? "The signal changed in at least one check" : "The signal did not change in completed checks"}</h4></div><span className="claim-chip calculation">Calculation</span></div>
-                  <p className="robustness-read">{fragilityRead(selected)}</p>
-                  <ul className="fragility-list">
-                    <li><span>Last 24 months</span><strong>{formatState(selected.fragility.trailing24State)}</strong></li>
-                    <li><span>Last 36 months</span><strong>{formatState(selected.fragility.trailing36State)}</strong></li>
-                    <li><span>Last 48 months</span><strong>{formatState(selected.fragility.trailing48State)}</strong></li>
-                    <li><span>Without 2024</span><strong>{formatState(selected.fragility.omit2024State)}</strong></li>
-                    <li><span>Without 2025</span><strong>{formatState(selected.fragility.omit2025State)}</strong></li>
-                    <li className="deferred"><span>Street-distance check</span><strong>Not run yet</strong><small>Incomplete checks are never called stable.</small></li>
-                  </ul>
-                  <p className="method-copy">Incomplete or deferred tests are never summarized as “stable.”</p>
-                </section>
               </div>
             )}
 
