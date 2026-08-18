@@ -12,7 +12,7 @@
 
 **GitHub:** https://github.com/reymundobermejo-glitch/harm-lens-nyc (existing repo only; no new repo)
 
-**Source commit:** recorded after GitHub sync on `main`.
+**Source commit:** `8d69974` — *Ship copy + contrast + Hold up fold to production.*
 
 Authorization used (verbatim intent): strong-only production redeploy of the current `phase-3/app` local PASS stack onto `https://harm-lens-nyc.vercel.app`, including the copy + contrast + Hold up fold (`TRACK_COPY_CONTRAST_HOLDUP_FOLD_RESULT.md`): Inspect tabs Counts / Crashes / On the street / Note; window checks on Counts; no “robustness” in UI; night contrast; distinct screen copy; select pulse. Keep job coach v1.2, P6.1, and H4. Same eleven product gz, W11 11/11 before alias, `wrapper_shipped: false`. Product freeze stays **2026-06-11 / maintenance**. Gold bind: Buffalo `26912` Everyone/36m Hurt **#1 · 66**. Do not mutate product gz, recrop `NYC_BOUNDS`, FOIL, HOLD unfreeze, heatmap, size-by-count, 3D, ship the 3012 wrapper, or implement G2.
 
